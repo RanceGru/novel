@@ -4,6 +4,9 @@ import { create } from 'zustand';
 interface Book {
   id: string;
   title: string;
+  coverUrl?: string | null;
+  author?: string | null;
+  subtitle?: string | null;
   wordCount: number;
   status: string;
   volumeCount?: number;

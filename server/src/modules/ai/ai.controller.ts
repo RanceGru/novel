@@ -1,7 +1,7 @@
 // AI 生成控制器 — SSE 流式端点
-import { Controller, Post, Body, Res, Logger } from '@nestjs/common';
+import { Controller, Post, Body, Res, Req, Logger } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
-import { Response } from 'express';
+import { Response, Request } from 'express';
 import { AiService } from './ai.service';
 import { StreamingService } from './streaming.service';
 import { PromptTemplateService } from './prompt-template.service';
@@ -47,6 +47,7 @@ export class AiController {
       instruction: string;
       targetWordCount: number;
     },
+    @Req() req: Request,
     @Res() res: Response,
   ) {
     // 设置 SSE 头
@@ -104,6 +105,14 @@ export class AiController {
         res.end();
         return;
       }
+
+      // 客户端断开时取消上游流
+      let aborted = false;
+      req.on('close', () => {
+        aborted = true;
+        reader?.cancel().catch(() => {});
+        this.logger.warn('客户端断开，取消 AI 流式请求');
+      });
 
       // 流式代理
       const reader = response.body?.getReader();

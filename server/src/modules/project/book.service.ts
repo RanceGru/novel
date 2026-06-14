@@ -3,6 +3,7 @@ import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/commo
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Book } from './entities/book.entity';
+import { omitUndefined } from '../../common/utils/object.utils';
 
 @Injectable()
 export class BookService {
@@ -26,13 +27,14 @@ export class BookService {
     return book;
   }
 
-  async create(userId: string, data: { title: string; subtitle?: string; author?: string; description?: string }): Promise<Book> {
+  async create(userId: string, data: { title: string; subtitle?: string; author?: string; description?: string; coverUrl?: string }): Promise<Book> {
     const book = this.bookRepository.create({
       userId,
       title: data.title,
       subtitle: data.subtitle || null,
       author: data.author || null,
       description: data.description || null,
+      coverUrl: data.coverUrl || null,
     });
     return this.bookRepository.save(book);
   }
@@ -42,7 +44,7 @@ export class BookService {
     if (book.userId !== userId) {
       throw new ForbiddenException('无权操作此书籍');
     }
-    Object.assign(book, data);
+    Object.assign(book, omitUndefined(data));
     return this.bookRepository.save(book);
   }
 

@@ -4,6 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Outline } from './entities/outline.entity';
 import { Book } from '../project/entities/book.entity';
+import { omitUndefined } from '../../common/utils/object.utils';
 
 @Injectable()
 export class OutlineService {
@@ -68,7 +69,7 @@ export class OutlineService {
     const book = await this.bookRepo.findOne({ where: { id: node.bookId } });
     if (!book || book.userId !== userId) throw new ForbiddenException('无权操作');
 
-    Object.assign(node, data);
+    Object.assign(node, omitUndefined(data));
     return this.outlineRepo.save(node);
   }
 
@@ -85,11 +86,20 @@ export class OutlineService {
     await this.outlineRepo.remove(node);
   }
 
-  private async deleteChildren(parentId: string) {
+  private MAX_DEPTH = 100;
+
+  private async deleteChildren(parentId: string, depth = 0) {
+    if (depth > this.MAX_DEPTH) {
+      throw new Error('纲树层级过深（>100层），可能存在环形引用');
+    }
     const children = await this.outlineRepo.find({ where: { parentId } });
-    for (const child of children) {
-      await this.deleteChildren(child.id);
-      await this.outlineRepo.remove(child);
+    // 批量删除子节点 (避免 N+1)
+    const childIds = children.map(c => c.id);
+    for (const childId of childIds) {
+      await this.deleteChildren(childId, depth + 1);
+    }
+    if (children.length > 0) {
+      await this.outlineRepo.remove(children);
     }
   }
 

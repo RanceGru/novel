@@ -3,6 +3,8 @@ import { useState } from 'react';
 import { useEditorStore } from '../../stores/editor.store';
 import { useAuthStore } from '../../stores/auth.store';
 import { Send, Loader2 } from 'lucide-react';
+import VersionHistory from '../version/VersionHistory';
+import AgentPanel from '../subscription/AgentPanel';
 
 export default function RightPanel() {
   const {
@@ -100,18 +102,17 @@ export default function RightPanel() {
     <aside className="w-80 bg-bg-secondary border-l border-border-primary flex flex-col shrink-0 overflow-hidden">
       {/* Tab 切换 */}
       <div className="flex border-b border-border-primary text-xs">
-        {(['outline', 'instruction'] as const).map((tab) => (
-          <button
-            key={tab}
-            className={`flex-1 py-2 text-center transition-colors ${
-              rightPanelTab === tab
-                ? 'text-brand-primary border-b-2 border-brand-primary font-medium'
-                : 'text-text-tertiary hover:text-text-secondary'
-            }`}
-            onClick={() => useEditorStore.getState().setRightPanelTab(tab)}
-          >
-            {tab === 'outline' ? '📝 章纲' : '📋 指令'}
-          </button>
+        {([
+          { key: 'outline', label: '📝 章纲' },
+          { key: 'instruction', label: '📋 指令' },
+          { key: 'review', label: '🔍 审查' },
+          { key: 'memory', label: '🧠 记忆' },
+          { key: 'settings', label: '⚙ 设定' },
+        ] as const).map(({ key, label }) => (
+          <button key={key}
+            className={`flex-1 py-2 text-center transition-colors ${rightPanelTab === key ? 'text-brand-primary border-b-2 border-brand-primary font-medium' : 'text-text-tertiary hover:text-text-secondary'}`}
+            onClick={() => useEditorStore.getState().setRightPanelTab(key)}
+          >{label}</button>
         ))}
       </div>
 
@@ -139,6 +140,22 @@ export default function RightPanel() {
               onChange={(e) => setInstruction(e.target.value)}
             />
           </>
+        )}
+
+        {rightPanelTab === 'review' && <VersionHistory />}
+        {rightPanelTab === 'memory' && <AgentPanel />}
+        {rightPanelTab === 'settings' && (
+          <div className="text-xs space-y-2">
+            <p className="font-medium text-text-secondary">⚙ 生成参数</p>
+            <div className="space-y-1">
+              <label className="text-text-tertiary">创造力 (temperature)</label>
+              <input type="range" min="0.1" max="1.5" step="0.1" defaultValue="0.8" className="w-full" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-text-tertiary">最大字数</label>
+              <input type="number" defaultValue={4096} className="w-full p-1 border rounded text-xs" />
+            </div>
+          </div>
         )}
 
         {/* 目标字数 */}

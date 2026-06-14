@@ -5,6 +5,7 @@ import { Repository } from 'typeorm';
 import { Chapter } from './entities/chapter.entity';
 import { Volume } from './entities/volume.entity';
 import { BookService } from './book.service';
+import { omitUndefined } from '../../common/utils/object.utils';
 
 @Injectable()
 export class ChapterService {
@@ -28,10 +29,18 @@ export class ChapterService {
     });
   }
 
-  async findById(id: string): Promise<Chapter> {
+  async findById(id: string, userId?: string): Promise<Chapter> {
     const chapter = await this.chapterRepository.findOne({ where: { id } });
     if (!chapter) {
       throw new NotFoundException('章节不存在');
+    }
+    // 权限校验：如果提供了 userId，验证所有权
+    if (userId) {
+      const volume = await this.volumeRepository.findOne({ where: { id: chapter.volumeId } });
+      if (volume) {
+        const book = await this.bookService.findById(volume.bookId);
+        if (book.userId !== userId) throw new ForbiddenException('无权访问');
+      }
     }
     return chapter;
   }
@@ -66,7 +75,7 @@ export class ChapterService {
     if (data.content !== undefined) {
       chapter.wordCount = data.content ? data.content.length : 0;
     }
-    Object.assign(chapter, data);
+    Object.assign(chapter, omitUndefined(data));
     const saved = await this.chapterRepository.save(chapter);
     await this.bookService.updateWordCount(volume.bookId);
     return saved;

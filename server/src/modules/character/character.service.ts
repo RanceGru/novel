@@ -5,6 +5,7 @@ import { Repository } from 'typeorm';
 import { Character } from './entities/character.entity';
 import { CharacterRelation } from './entities/character-relation.entity';
 import { Book } from '../project/entities/book.entity';
+import { omitUndefined } from '../../common/utils/object.utils';
 
 @Injectable()
 export class CharacterService {
@@ -36,7 +37,7 @@ export class CharacterService {
     const char = await this.charRepo.findOne({ where: { id } });
     if (!char) throw new NotFoundException('角色不存在');
     await this.checkBook(char.bookId, userId);
-    Object.assign(char, data);
+    Object.assign(char, omitUndefined(data));
     return this.charRepo.save(char);
   }
 

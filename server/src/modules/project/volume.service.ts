@@ -4,6 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Volume } from './entities/volume.entity';
 import { BookService } from './book.service';
+import { omitUndefined } from '../../common/utils/object.utils';
 
 @Injectable()
 export class VolumeService {
@@ -53,7 +54,7 @@ export class VolumeService {
     if (book.userId !== userId) {
       throw new ForbiddenException('无权操作');
     }
-    Object.assign(volume, data);
+    Object.assign(volume, omitUndefined(data));
     return this.volumeRepository.save(volume);
   }
 

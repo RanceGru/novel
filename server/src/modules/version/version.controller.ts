@@ -12,16 +12,20 @@ export class VersionController {
   @Get('chapters/:chapterId/versions')
   async getHistory(
     @Param('chapterId') chapterId: string,
+    @CurrentUser() user: { id: string; plan: string },
     @Query('page') page?: number,
     @Query('limit') limit?: number,
     @Query('source') source?: string,
   ) {
-    return this.version.getHistory(chapterId, +(page || 1), +(limit || 20), source);
+    return this.version.getHistory(chapterId, user.id, +(page || 1), +(limit || 20), source);
   }
 
   @Get('versions/:versionId')
-  async getVersion(@Param('versionId') versionId: string) {
-    return this.version.getVersion(versionId);
+  async getVersion(
+    @Param('versionId') versionId: string,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.version.getVersion(versionId, user.id);
   }
 
   @Post('versions/:versionId/revert')

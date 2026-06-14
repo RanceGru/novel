@@ -1,1 +1,6 @@
-测试账号 test@novel.com / test123456
+  1. 在 D:\project\novel 文件夹空白处 Shift+右键 → "在此处打开 PowerShell"
+  2. pnpm dev:server
+  3. 再开一个同样方式
+  4. pnpm dev:client
+
+测试账号 88888888@qq.com /8888888

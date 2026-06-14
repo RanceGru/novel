@@ -55,9 +55,14 @@ export class VectorSearchService {
       results.push(...items.map(f => this.scoreItem(f, queryEmbedding, query, 'foreshadow')));
     }
     if (types.includes('character_state')) {
-      const items = await this.charStateRepo.find({
-        where: { characterId: filters?.characterIds ? In(filters.characterIds) : undefined },
-      });
+      const items = await this.charStateRepo
+        .createQueryBuilder('cs')
+        .innerJoin('characters', 'c', 'c.id = cs.character_id')
+        .where('c.book_id = :bookId', { bookId })
+        .andWhere(filters?.characterIds ? 'cs.character_id IN (:...charIds)' : '1=1', {
+          charIds: filters?.characterIds || [],
+        })
+        .getMany();
       results.push(...items.map(c => this.scoreItem(c, queryEmbedding, query, 'character_state')));
     }
     if (types.includes('setting_patch')) {

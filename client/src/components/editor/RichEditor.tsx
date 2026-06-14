@@ -60,48 +60,28 @@ export default function RichEditor() {
   return (
     <div className="h-full flex flex-col">
       {/* 工具栏 */}
-      <div className="flex items-center gap-1 px-3 py-1.5 border-b border-border-primary bg-bg-secondary text-xs">
-        <button
-          onClick={() => editor?.chain().focus().toggleBold().run()}
-          className={`px-2 py-0.5 rounded hover:bg-bg-hover ${editor?.isActive('bold') ? 'bg-bg-active font-bold' : ''}`}
-        >
-          B
-        </button>
-        <button
-          onClick={() => editor?.chain().focus().toggleItalic().run()}
-          className={`px-2 py-0.5 rounded hover:bg-bg-hover italic ${editor?.isActive('italic') ? 'bg-bg-active' : ''}`}
-        >
-          I
-        </button>
-        <button
-          onClick={() => editor?.chain().focus().toggleHeading({ level: 1 }).run()}
-          className={`px-2 py-0.5 rounded hover:bg-bg-hover ${editor?.isActive('heading', { level: 1 }) ? 'bg-bg-active' : ''}`}
-        >
-          H1
-        </button>
-        <button
-          onClick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()}
-          className={`px-2 py-0.5 rounded hover:bg-bg-hover ${editor?.isActive('heading', { level: 2 }) ? 'bg-bg-active' : ''}`}
-        >
-          H2
-        </button>
-        <span className="text-text-tertiary mx-2">|</span>
-        <button
-          onClick={() => editor?.chain().focus().undo().run()}
-          className="px-2 py-0.5 rounded hover:bg-bg-hover"
-          title="撤销"
-        >
-          ↩
-        </button>
-        <button
-          onClick={() => editor?.chain().focus().redo().run()}
-          className="px-2 py-0.5 rounded hover:bg-bg-hover"
-          title="重做"
-        >
-          ↪
-        </button>
-        <span className="text-text-tertiary ml-auto">
+      <div className="flex items-center gap-1 px-3 py-1.5 border-b border-border-primary bg-bg-secondary text-xs flex-wrap">
+        <Btn editor={editor} cmd="bold" label="B" title="加粗" />
+        <Btn editor={editor} cmd="italic" label="I" title="斜体" />
+        <Btn editor={editor} cmd="heading1" label="H1" title="一级标题" />
+        <Btn editor={editor} cmd="heading2" label="H2" title="二级标题" />
+        <Btn editor={editor} cmd="heading3" label="H3" title="三级标题" />
+        <span className="text-text-tertiary">|</span>
+        <Btn editor={editor} cmd="bulletList" label="•≡" title="无序列表" />
+        <Btn editor={editor} cmd="orderedList" label="1." title="有序列表" />
+        <Btn editor={editor} cmd="blockquote" label="❝" title="引用" />
+        <Btn editor={editor} cmd="horizontalRule" label="—" title="分割线" />
+        <span className="text-text-tertiary">|</span>
+        <Btn editor={editor} cmd="undo" label="↩" title="撤销" />
+        <Btn editor={editor} cmd="redo" label="↪" title="重做" />
+        <span className="text-text-tertiary ml-auto flex items-center gap-1">
           {isGenerating && '🤖 AI 生成中...'}
+          {currentChapterId && !isGenerating && (
+            <button onClick={() => debouncedSave(currentChapterId, currentBookId, chapterContent, chapterOutline, instruction, true)}
+              className="px-2 py-0.5 text-brand-primary hover:bg-bg-hover rounded" title="手动保存 (Ctrl+S)">
+              💾 保存
+            </button>
+          )}
         </span>
       </div>
 
@@ -113,27 +93,54 @@ export default function RichEditor() {
   );
 }
 
+// ========== 工具栏按钮组件 ==========
+function Btn({ editor, cmd, label, title }: { editor: any; cmd: string; label: string; title: string }) {
+  const cmdMap: Record<string, () => void> = {
+    bold: () => editor?.chain().focus().toggleBold().run(),
+    italic: () => editor?.chain().focus().toggleItalic().run(),
+    heading1: () => editor?.chain().focus().toggleHeading({ level: 1 }).run(),
+    heading2: () => editor?.chain().focus().toggleHeading({ level: 2 }).run(),
+    heading3: () => editor?.chain().focus().toggleHeading({ level: 3 }).run(),
+    bulletList: () => editor?.chain().focus().toggleBulletList().run(),
+    orderedList: () => editor?.chain().focus().toggleOrderedList().run(),
+    blockquote: () => editor?.chain().focus().toggleBlockquote().run(),
+    horizontalRule: () => editor?.chain().focus().setHorizontalRule().run(),
+    undo: () => editor?.chain().focus().undo().run(),
+    redo: () => editor?.chain().focus().redo().run(),
+  };
+  const activeMap: Record<string, boolean> = {
+    bold: editor?.isActive('bold'),
+    italic: editor?.isActive('italic'),
+    heading1: editor?.isActive('heading', { level: 1 }),
+    heading2: editor?.isActive('heading', { level: 2 }),
+    heading3: editor?.isActive('heading', { level: 3 }),
+    bulletList: editor?.isActive('bulletList'),
+    orderedList: editor?.isActive('orderedList'),
+    blockquote: editor?.isActive('blockquote'),
+  };
+  return (
+    <button onClick={cmdMap[cmd]} title={title}
+      className={`px-2 py-0.5 rounded hover:bg-bg-hover ${activeMap[cmd] ? 'bg-bg-active font-bold' : ''}`}>
+      {label}
+    </button>
+  );
+}
+
 // ========== 自动保存 (简易防抖) ==========
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
 function debouncedSave(
-  chapterId: string,
-  bookId: string | null,
-  content: string,
-  outline: string,
-  instruction: string,
+  chapterId: string, bookId: string | null, content: string,
+  outline: string, instruction: string, immediate = false,
 ) {
   if (saveTimer) clearTimeout(saveTimer);
-  saveTimer = setTimeout(async () => {
+  const doSave = async () => {
     try {
-      await apiClient.patch(`/chapters/${chapterId}`, {
-        content,
-        chapterOutline: outline || undefined,
-        instruction: instruction || undefined,
-      });
-    } catch (err) {
-      console.error('自动保存失败:', err);
-    }
-  }, 3000);
+      const { currentVolumeId } = useEditorStore.getState();
+      await apiClient.patch(`/volumes/${currentVolumeId}/chapters/${chapterId}`, { content, chapterOutline: outline || undefined, instruction: instruction || undefined });
+    } catch (err) { console.error('保存失败:', err); }
+  };
+  if (immediate) { doSave(); return; }
+  saveTimer = setTimeout(doSave, 3000);
 }

@@ -146,7 +146,6 @@ export class AuthService {
     const payload = {
       sub: user.id,
       email: user.email,
-      plan,
     };
 
     const accessToken = this.jwtService.sign(payload, {

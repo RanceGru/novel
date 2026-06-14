@@ -26,20 +26,16 @@ export default function StatusBar() {
         )}
       </div>
       <div className="flex items-center gap-3">
-        <span className="flex items-center gap-1">
-          <span className="w-1.5 h-1.5 rounded-full bg-success inline-block" />
-          ☁ 云端同步
-        </span>
-        <span>🤖 DeepSeek</span>
         {usage && (
           <span title="Token: 本月已用/总额度">
-            🔷 {(usage.monthlyTokensUsed / 10000).toFixed(1)}万/{(usage.monthlyTokenQuota / 10000).toFixed(1)}万
+            🔷 {(usage.monthlyTokensUsed / 10000).toFixed(1)}万/{(usage.monthlyTokenQuota / 10000).toFixed(1)}万 Token
           </span>
         )}
         {balance && balance.purchasedTokensRemaining > 0 && (
-          <span title="额外购买Token">💰 {(balance.purchasedTokensRemaining / 10000).toFixed(1)}万</span>
+          <span title="额外购买Token">💰 +{(balance.purchasedTokensRemaining / 10000).toFixed(1)}万</span>
         )}
-        <span>[{usage?.currentPlanName || 'Free'}]</span>
+        <span className="font-medium">[{usage?.currentPlanName || 'Free'}]</span>
+        <span className="text-text-tertiary/50">SQLite 本地</span>
       </div>
     </footer>
   );

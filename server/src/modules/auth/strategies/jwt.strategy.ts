@@ -5,11 +5,11 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from '../../user/entities/user.entity';
+import { Subscription } from '../../subscription/entities/subscription.entity';
 
 export interface JwtPayload {
   sub: string;
   email: string;
-  plan: string;
   iat: number;
   exp: number;
 }
@@ -19,11 +19,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(
     @InjectRepository(User)
     private userRepository: Repository<User>,
+    @InjectRepository(Subscription)
+    private subscriptionRepository: Repository<Subscription>,
   ) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: process.env.JWT_SECRET || 'dev-secret-change-in-production',
+      secretOrKey: process.env.JWT_SECRET || 'novel-dev-secret-not-for-production',
     });
   }
 
@@ -32,10 +34,16 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (!user) {
       throw new UnauthorizedException('用户不存在或已被删除');
     }
+
+    // 从数据库查询当前有效套餐（而非信任 JWT 中的过期数据）
+    const sub = await this.subscriptionRepository.findOne({
+      where: { userId: user.id, status: 'active' },
+    });
+
     return {
       id: user.id,
       email: user.email,
-      plan: payload.plan,
+      plan: sub?.tier || 'free',
     };
   }
 }

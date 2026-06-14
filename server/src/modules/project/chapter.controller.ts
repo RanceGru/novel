@@ -28,7 +28,7 @@ export class ChapterController {
   @Get(':id')
   @ApiOperation({ summary: '获取章节详情（含正文）' })
   async getById(@Param('id') id: string, @CurrentUser() user: { id: string }) {
-    return this.chapterService.findById(id);
+    return this.chapterService.findById(id, user.id);
   }
 
   @Patch(':id')

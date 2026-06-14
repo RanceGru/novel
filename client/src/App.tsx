@@ -4,13 +4,11 @@ import { useAuthStore } from './stores/auth.store';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import WorkspacePage from './pages/WorkspacePage';
+import PricingPage from './components/subscription/PricingPage';
 
-/** 路由守卫：未登录重定向到登录页 */
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
-  }
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
   return <>{children}</>;
 }
 
@@ -19,14 +17,8 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
-      <Route
-        path="/workspace"
-        element={
-          <RequireAuth>
-            <WorkspacePage />
-          </RequireAuth>
-        }
-      />
+      <Route path="/workspace" element={<RequireAuth><WorkspacePage /></RequireAuth>} />
+      <Route path="/pricing" element={<RequireAuth><PricingPage /></RequireAuth>} />
       <Route path="*" element={<Navigate to="/workspace" replace />} />
     </Routes>
   );

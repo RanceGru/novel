@@ -41,13 +41,14 @@ export class StreamingService {
   ) {
     const requestId = uuidv4();
     const startTime = Date.now();
+    const estimatedTotal = metadata.totalTokens || 500;
     let fullText = '';
     let tokenIndex = 0;
 
     // 发送开始事件
     this.sendEvent(res, 'start', {
       requestId,
-      estimatedTokens: metadata.totalTokens || 500,
+      estimatedTokens: estimatedTotal,
     });
 
     try {
@@ -55,13 +56,14 @@ export class StreamingService {
         const delta = this.extractDelta(chunk);
         if (delta) {
           fullText += delta;
-          this.sendEvent(res, 'token', { text: delta, index: tokenIndex++ });
+          tokenIndex++;
+          this.sendEvent(res, 'token', { text: delta, index: tokenIndex });
 
           // 每 50 个 token 发送一次进度
           if (tokenIndex % 50 === 0) {
             this.sendEvent(res, 'progress', {
               tokensGenerated: tokenIndex,
-              estimatedProgress: Math.min(tokenIndex / (metadata.totalTokens || 500), 0.99),
+              estimatedProgress: Math.min(tokenIndex / Math.max(estimatedTotal, tokenIndex + 100), 0.99),
             });
           }
         }

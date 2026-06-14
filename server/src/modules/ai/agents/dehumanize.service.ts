@@ -107,10 +107,7 @@ ${text}
         vocabulary: json?.dimension_scores?.vocabulary || 5,
         creativity: json?.dimension_scores?.creativity || 5,
       },
-      flaggedSegments: (json?.flagged_segments || []).map((f: any, i: number) => ({
-        ...f,
-        position: { start: i * 100, end: i * 100 + (f.text?.length || 20) },
-      })),
+      flaggedSegments: this.locateSegments(text, json?.flagged_segments || []),
     };
   }
 
@@ -167,6 +164,17 @@ ${text}
       }
     }
     return diff || '无显著差异';
+  }
+
+  /** 在原文中定位标记片段 */
+  private locateSegments(original: string, segments: Array<{ text: string; issue: string; suggestion: string; severity: string }>) {
+    return segments.map(f => {
+      const idx = original.indexOf(f.text);
+      return {
+        ...f,
+        position: idx >= 0 ? { start: idx, end: idx + f.text.length } : { start: 0, end: 0 },
+      };
+    });
   }
 
   private extractJSON(text: string): any {

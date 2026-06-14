@@ -4,6 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { WorldSetting } from './entities/world-setting.entity';
 import { Book } from '../project/entities/book.entity';
+import { omitUndefined } from '../../common/utils/object.utils';
 
 @Injectable()
 export class WorldbuildingService {
@@ -36,7 +37,7 @@ export class WorldbuildingService {
     if (!ws) throw new NotFoundException('世界观设定不存在');
     await this.checkBook(ws.bookId, userId);
     if (data.content !== undefined) ws.contentVersion += 1;
-    Object.assign(ws, data);
+    Object.assign(ws, omitUndefined(data));
     return this.wsRepo.save(ws);
   }
 
