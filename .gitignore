@@ -1,0 +1,43 @@
+# 依赖
+node_modules/
+.pnpm-store/
+
+# 构建输出
+dist/
+out/
+build/
+release/
+
+# 环境变量
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+.vscode/settings.json
+
+# 操作系统
+.DS_Store
+Thumbs.db
+*.log
+
+# 数据库
+*.sqlite
+*.sqlite3
+
+# Electron
+client/out/
+client/release/
+
+# 测试覆盖率
+coverage/
+
+# TypeScript
+*.tsbuildinfo
+
+# Docker
+.env.production.local
