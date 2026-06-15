@@ -1,9 +1,9 @@
 // 左侧边栏 — 写作台导航
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useProjectStore } from '../../stores/project.store';
 import { useEditorStore } from '../../stores/editor.store';
 import { apiClient } from '../../services/api.service';
-import { FileText, Plus, ChevronRight, ChevronDown, Settings } from 'lucide-react';
+import { FileText, Plus, ChevronRight, ChevronDown, Settings, FolderPlus, FilePlus } from 'lucide-react';
 import OutlineTree from '../outline/OutlineTree';
 import CharacterList from '../characters/CharacterList';
 import WorldSettingList from '../worldbuilding/WorldSettingList';
@@ -30,6 +30,11 @@ export default function LeftSidebar() {
   const [deleteBook, setDeleteBook] = useState<any>(null);
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [activeBookForAdd, setActiveBookForAdd] = useState<any>(null);
+  const [renamingVolume, setRenamingVolume] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const renamingRef = useRef<string | null>(null);
+  const blurTimeRef = useRef(0);
+  const setRenaming = (id: string | null) => { renamingRef.current = id; setRenamingVolume(id); };
 
   // 加载书籍列表
   useEffect(() => {
@@ -134,7 +139,7 @@ export default function LeftSidebar() {
             {/* 下拉按钮：相关 */}
             {expandedBook === book.id && (
               <div className="flex flex-col">
-                <button
+                <div
                   onClick={() => {
                     setBookTab(prev => ({ ...prev, [book.id]: prev[book.id] === 'related' ? null : 'related' }));
                     setExpandedVolume(null);
@@ -143,7 +148,7 @@ export default function LeftSidebar() {
                   className="w-full pl-8 pr-3 py-1.5 text-left text-sm hover:bg-bg-hover flex items-center gap-1.5 transition-colors">
                   {bookTab[book.id] === 'related' ? <ChevronDown size={14} className="text-text-tertiary" /> : <ChevronRight size={14} className="text-text-tertiary" />}
                   <span className="text-text-secondary">相关</span>
-                </button>
+                </div>
                 {/* 相关内容 */}
                 {bookTab[book.id] === 'related' && (
                   <div className="pl-10 pr-2 py-1 space-y-0.5">
@@ -158,52 +163,49 @@ export default function LeftSidebar() {
             {/* 下拉按钮：目录 */}
             {expandedBook === book.id && (
               <div className="flex flex-col">
-                <div className="relative">
-                <button
+                <div
                   onClick={() => {
                     if (expandedBook !== book.id) setExpandedBook(book.id);
                     setBookTab(prev => ({ ...prev, [book.id]: prev[book.id] === 'toc' ? null : 'toc' }));
                   }}
-                  className="w-full pl-8 pr-3 py-1.5 text-left text-sm hover:bg-bg-hover flex items-center gap-1.5 transition-colors group">
+                  className="w-full pl-8 pr-3 py-1.5 text-left text-sm hover:bg-bg-hover flex items-center gap-1.5 transition-colors group cursor-pointer">
                   {bookTab[book.id] === 'toc' ? <ChevronDown size={14} className="text-text-tertiary" /> : <ChevronRight size={14} className="text-text-tertiary" />}
                   <span className="text-text-secondary flex-1">目录</span>
                   <button
-                    onClick={(e) => { e.stopPropagation(); setActiveBookForAdd(book); setShowAddMenu(!showAddMenu); }}
-                    className="hidden group-hover:inline-flex shrink-0 w-5 h-5 items-center justify-center rounded hover:bg-bg-active text-text-tertiary hover:text-text-primary transition-colors"
-                    title="新建卷或章节">
-                    <Plus size={14} />
-                  </button>
-                </button>
-                {/* + 浮动气泡菜单 */}
-                {showAddMenu && activeBookForAdd?.id === book.id && (
-                  <div className="absolute left-[55%] -top-1 z-40 bg-bg-primary border border-border-primary rounded-lg shadow-lg flex"
-                    onMouseLeave={() => setShowAddMenu(false)}>
-                    <button onClick={async () => {
-                      const title = prompt('分卷名称：');
-                      if (!title) { setShowAddMenu(false); return; }
+                    onClick={async (e) => { e.stopPropagation();
+                      console.log('📁+ clicked');
                       const vn = volumes.filter(v => v.bookId === book.id).length + 1;
-                      await apiClient.post(`/books/${book.id}/volumes`, { title, volumeNumber: vn });
-                      handleExpandBook(book.id); setShowAddMenu(false);
-                    }} className="px-3 py-1.5 text-xs hover:bg-bg-hover rounded-l-lg whitespace-nowrap">
-                      新建分卷
-                    </button>
-                    <div className="w-px bg-border-primary" />
-                    <button onClick={async () => {
-                      setShowAddMenu(false);
-                      const bookVolumes = volumes.filter(v => v.bookId === book.id);
-                      if (bookVolumes.length === 0) { alert('请先创建分卷'); return; }
-                      const title = prompt('章节名称：');
-                      if (!title) return;
-                      const cn = chapters.filter(c => c.volumeId === bookVolumes[0].id).length + 1;
-                      await apiClient.post(`/volumes/${bookVolumes[0].id}/chapters`, { title, chapterNumber: cn });
-                      handleExpandVolume(bookVolumes[0].id);
-                    }} className="px-3 py-1.5 text-xs hover:bg-bg-hover rounded-r-lg whitespace-nowrap">
-                      新建章节
-                    </button>
-                  </div>
-                )}
+                      const title = `分卷${vn}`;
+                      const res = await apiClient.post(`/books/${book.id}/volumes`, { title, volumeNumber: vn });
+                      console.log('volume created:', res.data.data.id);
+                      apiClient.get(`/books/${book.id}/volumes`).then(r => {
+                        console.log('volumes reloaded:', r.data.data.length);
+                        setVolumes(r.data.data || []);
+                      });
+                      setBookTab(prev => ({ ...prev, [book.id]: 'toc' }));
+                      setExpandedBook(book.id);
+                      setExpandedVolume(res.data.data.id);
+                      setTimeout(() => { setRenaming(res.data.data.id); setRenameValue(title); }, 200);
+                    }}
+                    className="inline-flex shrink-0 rounded hover:bg-bg-active text-text-tertiary hover:text-text-primary transition-colors p-0.5"
+                    title="新建分卷">
+                    <FolderPlus size={15} />
+                  </button>
+                  <button
+                    onClick={async (e) => { e.stopPropagation();
+                      const chapterVols = volumes.filter(v => v.bookId === book.id);
+                      if (chapterVols.length === 0) { alert('请先创建分卷'); return; }
+                      const cn = chapters.filter(c => c.volumeId === chapterVols[0].id).length + 1;
+                      await apiClient.post(`/volumes/${chapterVols[0].id}/chapters`, { title: `章节${cn}`, chapterNumber: cn });
+                      apiClient.get(`/volumes/${chapterVols[0].id}/chapters`).then(r => setChapters(r.data.data || []));
+                    }}
+                    className="inline-flex shrink-0 rounded hover:bg-bg-active text-text-tertiary hover:text-text-primary transition-colors p-0.5"
+                    title="新建章节">
+                    <FilePlus size={15} />
+                  </button>
                 </div>
                 {/* 目录内容 */}
+                <div className="max-h-72 overflow-y-auto pr-3 mr-1">
                 {bookTab[book.id] === 'toc' &&
                   (volumes.filter(v => v.bookId === book.id).length === 0 ? (
                 <div className="pl-8 pr-3 py-3 text-xs text-text-tertiary">
@@ -212,15 +214,36 @@ export default function LeftSidebar() {
               ) : (
                 <>
                   {volumes.filter(v => v.bookId === book.id).map(volume => (
-                    <div key={volume.id}>
+                    <div key={volume.id} id={`vol-${volume.id}`}>
                       <button className="w-full pl-10 pr-3 py-1.5 text-left text-sm hover:bg-bg-hover flex items-center gap-1.5 transition-colors group"
                         onClick={() => handleExpandVolume(volume.id)}>
                         {expandedVolume === volume.id ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                        <span className="truncate flex-1">第{volume.volumeNumber}卷 {volume.title}</span>
+                        {renamingRef.current === volume.id ? (
+                          <input autoFocus
+                            className="flex-1 px-1 py-0 text-xs border border-brand-primary rounded bg-bg-primary"
+                            value={renameValue}
+                            onChange={e => setRenameValue(e.target.value)}
+                            onKeyDown={async e => {
+                              if (e.key === 'Enter' && renameValue.trim()) {
+                                await apiClient.patch(`/volumes/${volume.id}`, { title: renameValue.trim() });
+                                const vRes = await apiClient.get(`/books/${book.id}/volumes`);
+                                setVolumes(vRes.data.data);
+                                blurTimeRef.current = 0; setRenaming(null);
+                              }
+                              if (e.key === 'Escape') { blurTimeRef.current = 0; setRenaming(null); }
+                            }}
+                            onBlur={() => setRenaming(null)}
+                          />
+                        ) : (
+                          <span className="truncate flex-1" onDoubleClick={(e) => { e.stopPropagation(); setRenaming(volume.id); setRenameValue(volume.title); }}>
+                            第{volume.volumeNumber}卷 {volume.title}
+                          </span>
+                        )}
                         <button onClick={async (e: any) => { e.stopPropagation();
                           if (confirm('删除此卷及所有章节？')) {
                             await apiClient.delete(`/books/${book.id}/volumes/${volume.id}`);
-                            handleExpandBook(book.id);
+                            const vRes = await apiClient.get(`/books/${book.id}/volumes`);
+                            setVolumes(vRes.data.data);
                           }
                         }} className="hidden group-hover:inline text-text-tertiary hover:text-error text-xs">✕</button>
                       </button>
@@ -244,6 +267,7 @@ export default function LeftSidebar() {
                 </>
               ))
               }
+              </div>
               </div>
             )}
           </div>
