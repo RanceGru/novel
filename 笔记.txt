@@ -4,3 +4,6 @@
   4. pnpm dev:client
 
 测试账号 88888888@qq.com /8888888
+
+  邮箱：test@novel.com
+  密码：test123456

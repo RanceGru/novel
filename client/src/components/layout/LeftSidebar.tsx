@@ -1,5 +1,6 @@
 // 左侧边栏 — 写作台导航
 import { useState, useEffect, useRef } from 'react';
+import { useAuthStore } from '../../stores/auth.store';
 import { useProjectStore } from '../../stores/project.store';
 import { useEditorStore } from '../../stores/editor.store';
 import { apiClient } from '../../services/api.service';
@@ -10,6 +11,7 @@ import WorldSettingList from '../worldbuilding/WorldSettingList';
 import SettingsDialog from './SettingsDialog';
 import BookCreateDialog from './BookCreateDialog';
 import BookContextMenu from './BookContextMenu';
+import VolumeContextMenu from './VolumeContextMenu';
 import BookExportDialog from './BookExportDialog';
 import BookDetailDialog from './BookDetailDialog';
 
@@ -28,6 +30,7 @@ export default function LeftSidebar() {
   const [exportBook, setExportBook] = useState<any>(null);
   const [detailBook, setDetailBook] = useState<any>(null);
   const [deleteBook, setDeleteBook] = useState<any>(null);
+  const [volCtxMenu, setVolCtxMenu] = useState<{ x: number; y: number; volume: any } | null>(null);
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [activeBookForAdd, setActiveBookForAdd] = useState<any>(null);
   const [renamingVolume, setRenamingVolume] = useState<string | null>(null);
@@ -37,14 +40,22 @@ export default function LeftSidebar() {
   const setRenaming = (id: string | null) => { renamingRef.current = id; setRenamingVolume(id); };
 
   // 加载书籍列表
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   useEffect(() => {
-    setLoading(true);
-    apiClient
-      .get('/books')
-      .then((res) => setBooks(res.data.data))
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, []);
+    if (!isAuthenticated) return;
+    const loadBooks = async () => {
+      setLoading(true);
+      try {
+        const res = await apiClient.get('/books');
+        if (res.data?.data) setBooks(res.data.data);
+      } catch (err) {
+        console.error('加载书籍失败, 1秒后重试:', err);
+        setTimeout(() => loadBooks(), 1000);
+      }
+      setLoading(false);
+    };
+    loadBooks();
+  }, [isAuthenticated]);
 
   // 展开书籍 → 加载卷
   const handleExpandBook = async (bookId: string) => {
@@ -215,17 +226,19 @@ export default function LeftSidebar() {
                 <>
                   {volumes.filter(v => v.bookId === book.id).map(volume => (
                     <div key={volume.id} id={`vol-${volume.id}`}>
-                      <button className="w-full pl-10 pr-3 py-1.5 text-left text-sm hover:bg-bg-hover flex items-center gap-1.5 transition-colors group"
-                        onClick={() => handleExpandVolume(volume.id)}>
-                        {expandedVolume === volume.id ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                        {renamingRef.current === volume.id ? (
+                      {renamingRef.current === volume.id ? (
+                        <div className="w-full pl-10 pr-3 py-1.5 flex items-center gap-1.5"
+                          onContextMenu={(e) => { e.preventDefault(); setVolCtxMenu({ x: e.clientX, y: e.clientY, volume }); }}>
+                          {expandedVolume === volume.id ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                           <input autoFocus
                             className="flex-1 px-1 py-0 text-xs border border-brand-primary rounded bg-bg-primary"
                             value={renameValue}
                             onChange={e => setRenameValue(e.target.value)}
                             onKeyDown={async e => {
-                              if (e.key === 'Enter' && renameValue.trim()) {
-                                await apiClient.patch(`/volumes/${volume.id}`, { title: renameValue.trim() });
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                const newTitle = renameValue.trim() || volume.title;
+                                await apiClient.patch(`/books/${book.id}/volumes/${volume.id}`, { title: newTitle });
                                 const vRes = await apiClient.get(`/books/${book.id}/volumes`);
                                 setVolumes(vRes.data.data);
                                 blurTimeRef.current = 0; setRenaming(null);
@@ -234,19 +247,30 @@ export default function LeftSidebar() {
                             }}
                             onBlur={() => setRenaming(null)}
                           />
-                        ) : (
-                          <span className="truncate flex-1" onDoubleClick={(e) => { e.stopPropagation(); setRenaming(volume.id); setRenameValue(volume.title); }}>
+                        </div>
+                      ) : (
+                        <button className="w-full pl-10 pr-3 py-1.5 text-left text-sm hover:bg-bg-hover flex items-center gap-1.5 transition-colors group"
+                          onClick={() => handleExpandVolume(volume.id)}
+                          onContextMenu={(e) => { e.preventDefault(); setVolCtxMenu({ x: e.clientX, y: e.clientY, volume }); }}>
+                          {expandedVolume === volume.id ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                          <span className="truncate flex-1">
                             第{volume.volumeNumber}卷 {volume.title}
                           </span>
-                        )}
-                        <button onClick={async (e: any) => { e.stopPropagation();
-                          if (confirm('删除此卷及所有章节？')) {
-                            await apiClient.delete(`/books/${book.id}/volumes/${volume.id}`);
-                            const vRes = await apiClient.get(`/books/${book.id}/volumes`);
-                            setVolumes(vRes.data.data);
-                          }
-                        }} className="hidden group-hover:inline text-text-tertiary hover:text-error text-xs">✕</button>
+                          <button onClick={async (e: any) => { e.stopPropagation();
+                            // 先从服务端获取最新章节列表以计算正确的序号
+                            const listRes = await apiClient.get(`/volumes/${volume.id}/chapters`);
+                            const currentChapters = listRes.data.data || [];
+                            const cn = currentChapters.length + 1;
+                            await apiClient.post(`/volumes/${volume.id}/chapters`, { title: `章节${cn}`, chapterNumber: cn });
+                            // 重新加载章节列表
+                            const refresh = await apiClient.get(`/volumes/${volume.id}/chapters`);
+                            setChapters(refresh.data.data);
+                            if (expandedVolume !== volume.id) handleExpandVolume(volume.id);
+                          }} className="hidden group-hover:inline text-text-tertiary hover:text-text-primary text-xs" title="新建章节">
+                            <FilePlus size={13} />
+                          </button>
                       </button>
+                      )}
                       {expandedVolume === volume.id && chapters.filter(c => c.volumeId === volume.id).map(chapter => (
                         <button key={chapter.id}
                           className="w-full pl-14 pr-3 py-1 text-left text-xs hover:bg-bg-hover flex items-center gap-1.5 transition-colors text-text-secondary group"
@@ -299,6 +323,29 @@ export default function LeftSidebar() {
       </div>
 
       {/* 右键菜单 */}
+      {volCtxMenu && (
+        <VolumeContextMenu x={volCtxMenu.x} y={volCtxMenu.y} onClose={() => setVolCtxMenu(null)}
+          onNewChapter={async () => {
+            const listRes = await apiClient.get(`/volumes/${volCtxMenu.volume.id}/chapters`);
+            const cn = (listRes.data.data || []).length + 1;
+            await apiClient.post(`/volumes/${volCtxMenu.volume.id}/chapters`, { title: `章节${cn}`, chapterNumber: cn });
+            const refresh = await apiClient.get(`/volumes/${volCtxMenu.volume.id}/chapters`);
+            setChapters(refresh.data.data);
+            if (expandedVolume !== volCtxMenu.volume.id) handleExpandVolume(volCtxMenu.volume.id);
+          }}
+          onRename={() => {
+            setRenaming(volCtxMenu.volume.id);
+            setRenameValue(volCtxMenu.volume.title);
+          }}
+          onDelete={() => {
+            const v = volCtxMenu.volume;
+            if (confirm('删除此分卷及所有章节？')) {
+              apiClient.delete(`/books/${v.bookId}/volumes/${v.id}`).then(() => {
+                apiClient.get(`/books/${v.bookId}/volumes`).then(r => setVolumes(r.data.data));
+              });
+            }
+          }} />
+      )}
       {ctxMenu && (
         <BookContextMenu x={ctxMenu.x} y={ctxMenu.y} onClose={() => setCtxMenu(null)}
           onEdit={() => setEditBook(ctxMenu.book)}
