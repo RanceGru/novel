@@ -31,8 +31,14 @@ export default function LeftSidebar() {
   const [detailBook, setDetailBook] = useState<any>(null);
   const [deleteBook, setDeleteBook] = useState<any>(null);
   const [volCtxMenu, setVolCtxMenu] = useState<{ x: number; y: number; volume: any } | null>(null);
+  const [batchVolumeId, setBatchVolumeId] = useState<string | null>(null);
+  const [selectedChapters, setSelectedChapters] = useState<Set<string>>(new Set());
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [activeBookForAdd, setActiveBookForAdd] = useState<any>(null);
+  const [defaultChapters, setDefaultChapters] = useState<any[]>([]);
+  const [renamingChapter, setRenamingChapterState] = useState<string | null>(null);
+  const [renameChapterValue, setRenameChapterValue] = useState('');
+  const setRenamingChapter = (id: string | null, title?: string) => { setRenamingChapterState(id); if (title) setRenameChapterValue(title); };
   const [renamingVolume, setRenamingVolume] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const renamingRef = useRef<string | null>(null);
@@ -72,6 +78,12 @@ export default function LeftSidebar() {
     try {
       const res = await apiClient.get(`/books/${bookId}/volumes`);
       setVolumes(res.data.data);
+      // 加载默认分卷的章节
+      const defaultVol = res.data.data.find((v: any) => v.title === '默认');
+      if (defaultVol) {
+        const chRes = await apiClient.get(`/volumes/${defaultVol.id}/chapters`);
+        setDefaultChapters(chRes.data.data || []);
+      }
     } catch (err) {
       console.error(err);
     }
@@ -203,13 +215,7 @@ export default function LeftSidebar() {
                     <FolderPlus size={15} />
                   </button>
                   <button
-                    onClick={async (e) => { e.stopPropagation();
-                      const chapterVols = volumes.filter(v => v.bookId === book.id);
-                      if (chapterVols.length === 0) { alert('请先创建分卷'); return; }
-                      const cn = chapters.filter(c => c.volumeId === chapterVols[0].id).length + 1;
-                      await apiClient.post(`/volumes/${chapterVols[0].id}/chapters`, { title: `章节${cn}`, chapterNumber: cn });
-                      apiClient.get(`/volumes/${chapterVols[0].id}/chapters`).then(r => setChapters(r.data.data || []));
-                    }}
+                    onClick={(e) => { e.stopPropagation(); setActiveBookForAdd(book); setShowAddMenu(true); }}
                     className="inline-flex shrink-0 rounded hover:bg-bg-active text-text-tertiary hover:text-text-primary transition-colors p-0.5"
                     title="新建章节">
                     <FilePlus size={15} />
@@ -218,13 +224,13 @@ export default function LeftSidebar() {
                 {/* 目录内容 */}
                 <div className="max-h-72 overflow-y-auto pr-3 mr-1">
                 {bookTab[book.id] === 'toc' &&
-                  (volumes.filter(v => v.bookId === book.id).length === 0 ? (
+                  (volumes.filter(v => v.bookId === book.id && v.title !== '默认').length === 0 && defaultChapters.length === 0 ? (
                 <div className="pl-8 pr-3 py-3 text-xs text-text-tertiary">
                   暂无内容，点击右边 <Plus size={10} className="inline" /> 新建
                 </div>
               ) : (
                 <>
-                  {volumes.filter(v => v.bookId === book.id).map(volume => (
+                  {volumes.filter(v => v.bookId === book.id && v.title !== '默认').map(volume => (
                     <div key={volume.id} id={`vol-${volume.id}`}>
                       {renamingRef.current === volume.id ? (
                         <div className="w-full pl-10 pr-3 py-1.5 flex items-center gap-1.5"
@@ -261,33 +267,139 @@ export default function LeftSidebar() {
                             const listRes = await apiClient.get(`/volumes/${volume.id}/chapters`);
                             const currentChapters = listRes.data.data || [];
                             const cn = currentChapters.length + 1;
-                            await apiClient.post(`/volumes/${volume.id}/chapters`, { title: `章节${cn}`, chapterNumber: cn });
+                            const newCh = await apiClient.post(`/volumes/${volume.id}/chapters`, { title: `章节${cn}`, chapterNumber: cn });
                             // 重新加载章节列表
                             const refresh = await apiClient.get(`/volumes/${volume.id}/chapters`);
                             setChapters(refresh.data.data);
                             if (expandedVolume !== volume.id) handleExpandVolume(volume.id);
+                            setTimeout(() => setRenamingChapter(newCh.data.data.id, `章节${cn}`), 150);
                           }} className="hidden group-hover:inline text-text-tertiary hover:text-text-primary text-xs" title="新建章节">
                             <FilePlus size={13} />
                           </button>
                       </button>
                       )}
                       {expandedVolume === volume.id && chapters.filter(c => c.volumeId === volume.id).map(chapter => (
-                        <button key={chapter.id}
-                          className="w-full pl-14 pr-3 py-1 text-left text-xs hover:bg-bg-hover flex items-center gap-1.5 transition-colors text-text-secondary group"
-                          onClick={() => handleSelectChapter(chapter.id, book.id, volume.id)}>
-                          <FileText size={12} />
-                          <span className="truncate flex-1">第{chapter.chapterNumber}章 {chapter.title}</span>
-                          <span className="text-text-tertiary">{chapter.wordCount}字</span>
-                          <button onClick={async (e: any) => { e.stopPropagation();
-                            if (confirm('删除此章节？')) {
-                              await apiClient.delete(`/volumes/${volume.id}/chapters/${chapter.id}`);
-                              handleExpandVolume(volume.id);
-                            }
-                          }} className="hidden group-hover:inline text-text-tertiary hover:text-error">✕</button>
-                        </button>
-                      ))}
+                        renamingChapter === chapter.id ? (
+                          <div key={chapter.id} className="pl-14 pr-3 py-1 flex items-center gap-1">
+                            <input autoFocus className="flex-1 px-1 py-0 text-xs border border-brand-primary rounded bg-bg-primary"
+                              value={renameChapterValue} onChange={e => setRenameChapterValue(e.target.value)}
+                              onKeyDown={async e => {
+                                if (e.key === 'Enter') { e.preventDefault();
+                                  await apiClient.patch(`/volumes/${volume.id}/chapters/${chapter.id}`, { title: renameChapterValue.trim() || chapter.title });
+                                  const refresh = await apiClient.get(`/volumes/${volume.id}/chapters`); setChapters(refresh.data.data);
+                                  setRenamingChapter(null as any); }
+                                if (e.key === 'Escape') setRenamingChapter(null as any);
+                              }} onBlur={() => setRenamingChapter(null as any)} />
+                          </div>
+                        ) : (
+                        <div key={chapter.id} className={`flex items-center gap-1 ${batchVolumeId === volume.id ? 'pl-8' : 'pl-14'} pr-3 py-1 text-xs hover:bg-bg-hover text-text-secondary group`}>
+                          {batchVolumeId === volume.id && (
+                            <input type="checkbox" checked={selectedChapters.has(chapter.id)} onChange={() => setSelectedChapters(prev => { const n = new Set(prev); n.has(chapter.id) ? n.delete(chapter.id) : n.add(chapter.id); return n; })} className="shrink-0 w-3.5 h-3.5" />
+                          )}
+                          <button className="flex-1 flex items-center gap-1.5 text-left"
+                            onClick={() => batchVolumeId === volume.id ? null : handleSelectChapter(chapter.id, book.id, volume.id)}>
+                            <span className="truncate">第{chapter.chapterNumber}章 {chapter.title}</span>
+                            <span className="text-text-tertiary text-xs">{chapter.wordCount}字</span>
+                          </button>
+                          {batchVolumeId !== volume.id && (
+                            <button onClick={async (e: any) => { e.stopPropagation();
+                              if (confirm('删除此章节？')) { await apiClient.delete(`/volumes/${volume.id}/chapters/${chapter.id}`); const refresh = await apiClient.get(`/volumes/${volume.id}/chapters`); setChapters(refresh.data.data); }
+                            }} className="hidden group-hover:inline text-text-tertiary hover:text-error">✕</button>
+                          )}
+                        </div>
+                      )))}
+                      {/* 批量操作栏 */}
+                      {batchVolumeId === volume.id && (
+                        <div className="pl-10 pr-3 py-1 flex items-center gap-2 text-xs border-t border-border-primary bg-brand-primary/5">
+                          <span className="text-text-secondary">{selectedChapters.size ? `已选 ${selectedChapters.size} 章` : '选择章节'}</span>
+                          <div className="flex-1" />
+                          {volumes.filter(v => v.bookId === book.id).length > 0 && (
+                            <><span className="text-text-tertiary text-xs">移至</span>
+                            <select className="px-1 py-0.5 border border-border-primary rounded text-xs bg-bg-primary"
+                              defaultValue={volume.id} onChange={async (e) => {
+                                if (!e.target.value || !selectedChapters.size) return;
+                                if (!confirm(`移动 ${selectedChapters.size} 章？`)) return;
+                                let targetVolId = e.target.value;
+                                // "分卷外" → 移到默认分卷
+                                if (targetVolId === '__default__') {
+                                  let defVol: any = volumes.find(v => v.bookId === book.id && v.title === '默认');
+                                  if (!defVol) {
+                                    const res = await apiClient.post(`/books/${book.id}/volumes`, { title: '默认', volumeNumber: 0 });
+                                    defVol = res.data.data;
+                                  }
+                                  targetVolId = defVol.id;
+                                }
+                                for (const chId of selectedChapters) await apiClient.patch(`/volumes/${volume.id}/chapters/${chId}`, { volumeId: targetVolId });
+                                setBatchVolumeId(null); setSelectedChapters(new Set());
+                                const refresh = await apiClient.get(`/volumes/${volume.id}/chapters`);
+                                setChapters(refresh.data.data);
+                                // 如果移到默认分卷，刷新分卷外章节
+                                if (targetVolId === (volumes.find(v => v.bookId === book.id && v.title === '默认')?.id || '')) {
+                                  apiClient.get(`/volumes/${targetVolId}/chapters`).then(r => setDefaultChapters(r.data.data || []));
+                                }
+                              }}>
+                              <option value="__default__">分卷外</option>
+                              {volumes.filter(v => v.bookId === book.id && v.title !== '默认').map(v => (
+                                <option key={v.id} value={v.id}>{v.title}</option>
+                              ))}
+                            </select></>
+                          )}
+                          <button onClick={async () => {
+                            if (!selectedChapters.size) return;
+                            if (!confirm(`删除 ${selectedChapters.size} 章？`)) return;
+                            for (const chId of selectedChapters) await apiClient.delete(`/volumes/${volume.id}/chapters/${chId}`);
+                            setBatchVolumeId(null); setSelectedChapters(new Set());
+                            const refresh = await apiClient.get(`/volumes/${volume.id}/chapters`);
+                            setChapters(refresh.data.data);
+                          }} className="text-error/70 hover:text-error">删除</button>
+                          <span className="text-text-tertiary/30">|</span>
+                          <button onClick={() => { setBatchVolumeId(null); setSelectedChapters(new Set()); }}
+                            className="text-text-secondary hover:text-text-primary">完成</button>
+                        </div>
+                      )}
                     </div>
                   ))}
+                  {defaultChapters.map(chapter => (
+                    renamingChapter === chapter.id ? (
+                      <div key={chapter.id} className="pl-10 pr-3 py-1 flex items-center gap-1">
+                        <input autoFocus className="flex-1 px-1 py-0 text-sm border border-brand-primary rounded bg-bg-primary"
+                          value={renameChapterValue}
+                          onChange={e => setRenameChapterValue(e.target.value)}
+                          onKeyDown={async e => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              const defVol = volumes.find(v => v.bookId === book.id && v.title === '默认');
+                              if (defVol) {
+                                await apiClient.patch(`/volumes/${defVol.id}/chapters/${chapter.id}`, { title: renameChapterValue.trim() || chapter.title });
+                                apiClient.get(`/volumes/${defVol.id}/chapters`).then(r => setDefaultChapters(r.data.data || []));
+                              }
+                              setRenamingChapter(null as any);
+                            }
+                            if (e.key === 'Escape') setRenamingChapter(null as any);
+                          }}
+                          onBlur={() => setRenamingChapter(null as any)} />
+                      </div>
+                    ) : (
+                    <div key={chapter.id} className="w-full pl-10 pr-3 py-1.5 text-left text-sm hover:bg-bg-hover flex items-center gap-1.5 transition-colors text-text-secondary group">
+                      <button className="flex-1 flex items-center gap-1.5 text-left"
+                        onClick={() => {
+                          const defaultVol = volumes.find(v => v.bookId === book.id && v.title === '默认');
+                          if (defaultVol) handleSelectChapter(chapter.id, book.id, defaultVol.id);
+                        }}>
+                        <span className="truncate">第{chapter.chapterNumber}章 {chapter.title}</span>
+                        <span className="text-text-tertiary text-xs">{chapter.wordCount}字</span>
+                      </button>
+                      <button onClick={async (e: any) => { e.stopPropagation();
+                        if (confirm('删除此章节？')) {
+                          const defVol = volumes.find(v => v.bookId === book.id && v.title === '默认');
+                          if (defVol) {
+                            await apiClient.delete(`/volumes/${defVol.id}/chapters/${chapter.id}`);
+                            apiClient.get(`/volumes/${defVol.id}/chapters`).then(r => setDefaultChapters(r.data.data || []));
+                          }
+                        }
+                      }} className="hidden group-hover:inline text-text-tertiary hover:text-error">✕</button>
+                    </div>
+                    )))}
                 </>
               ))
               }
@@ -297,6 +409,62 @@ export default function LeftSidebar() {
           </div>
         ))}
 
+      {/* 新建章节弹窗 */}
+      {showAddMenu && activeBookForAdd && (
+        <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center" onClick={() => setShowAddMenu(false)}>
+          <div className="bg-bg-primary rounded-lg shadow-xl w-[300px]" onClick={e => e.stopPropagation()}>
+            <div className="px-4 py-3 border-b border-border-primary font-semibold text-sm">新建章节</div>
+            <div className="p-2">
+              <button onClick={async () => {
+                const bookVols = volumes.filter(v => v.bookId === activeBookForAdd.id);
+                let defVol: any = bookVols.find(v => v.title === '默认') || null;
+                if (!defVol) {
+                  const res = await apiClient.post(`/books/${activeBookForAdd.id}/volumes`, { title: '默认', volumeNumber: 0 });
+                  defVol = res.data.data;
+                }
+                const volId = defVol!.id;
+                const cn = (defaultChapters.length || 0) + 1;
+                const newCh = await apiClient.post(`/volumes/${volId}/chapters`, { title: `章节${cn}`, chapterNumber: cn });
+                apiClient.get(`/volumes/${volId}/chapters`).then(r => setDefaultChapters(r.data.data || []));
+                apiClient.get(`/books/${activeBookForAdd.id}/volumes`).then(r => setVolumes(r.data.data || []));
+                setBookTab(prev => ({ ...prev, [activeBookForAdd.id]: 'toc' }));
+                setExpandedBook(activeBookForAdd.id);
+                setShowAddMenu(false);
+                setTimeout(() => setRenamingChapter(newCh.data.data.id, `章节${cn}`), 150);
+              }} className="w-full px-3 py-2 text-left text-sm hover:bg-bg-hover rounded flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-current inline-block shrink-0 ml-1" />
+                分卷外创建
+              </button>
+              <details className="group">
+                <summary className="px-3 py-2 text-sm hover:bg-bg-hover rounded cursor-pointer list-none flex items-center gap-2">
+                  <ChevronRight size={14} className="group-open:rotate-90 transition-transform shrink-0 ml-1" />
+                  分卷内创建
+                </summary>
+                <div className="pl-4">
+                  {volumes.filter(v => v.bookId === activeBookForAdd.id && v.title !== '默认').map(v => (
+                    <button key={v.id} onClick={async () => {
+                      const listRes = await apiClient.get(`/volumes/${v.id}/chapters`);
+                      const cn = (listRes.data.data || []).length + 1;
+                      const newCh = await apiClient.post(`/volumes/${v.id}/chapters`, { title: `章节${cn}`, chapterNumber: cn });
+                      apiClient.get(`/volumes/${v.id}/chapters`).then(r => {
+                        setChapters(r.data.data || []);
+                        setTimeout(() => setRenamingChapter(newCh.data.data.id, `章节${cn}`), 150);
+                      });
+                      setExpandedVolume(v.id);
+                      setShowAddMenu(false);
+                    }} className="w-full px-3 py-2 text-left text-xs hover:bg-bg-hover rounded flex items-center gap-2">
+                      第{v.volumeNumber}卷 {v.title}
+                    </button>
+                  ))}
+                  {volumes.filter(v => v.bookId === activeBookForAdd.id && v.title !== '默认').length === 0 && (
+                    <div className="px-3 py-2 text-xs text-text-tertiary">暂无分卷</div>
+                  )}
+                </div>
+              </details>
+            </div>
+          </div>
+        </div>
+      )}
       </nav>
 
       {/* 纲树 */}
@@ -328,9 +496,15 @@ export default function LeftSidebar() {
           onNewChapter={async () => {
             const listRes = await apiClient.get(`/volumes/${volCtxMenu.volume.id}/chapters`);
             const cn = (listRes.data.data || []).length + 1;
-            await apiClient.post(`/volumes/${volCtxMenu.volume.id}/chapters`, { title: `章节${cn}`, chapterNumber: cn });
+            const newCh = await apiClient.post(`/volumes/${volCtxMenu.volume.id}/chapters`, { title: `章节${cn}`, chapterNumber: cn });
             const refresh = await apiClient.get(`/volumes/${volCtxMenu.volume.id}/chapters`);
             setChapters(refresh.data.data);
+            if (expandedVolume !== volCtxMenu.volume.id) handleExpandVolume(volCtxMenu.volume.id);
+            setTimeout(() => setRenamingChapter(newCh.data.data.id, `章节${cn}`), 150);
+          }}
+          onBatchManage={() => {
+            setBatchVolumeId(volCtxMenu.volume.id);
+            setSelectedChapters(new Set());
             if (expandedVolume !== volCtxMenu.volume.id) handleExpandVolume(volCtxMenu.volume.id);
           }}
           onRename={() => {
