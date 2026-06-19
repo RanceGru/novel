@@ -21,7 +21,7 @@ export class VolumeService {
     }
     return this.volumeRepository.find({
       where: { bookId },
-      order: { volumeNumber: 'ASC' },
+      order: { volumeNumber: 'DESC' },
     });
   }
 

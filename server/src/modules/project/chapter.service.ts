@@ -24,7 +24,7 @@ export class ChapterService {
     await this.bookService.findById(volume.bookId);
     return this.chapterRepository.find({
       where: { volumeId },
-      order: { chapterNumber: 'ASC' },
+      order: { chapterNumber: 'DESC' },
       select: ['id', 'volumeId', 'title', 'chapterNumber', 'wordCount', 'status', 'updatedAt'],
     });
   }

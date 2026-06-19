@@ -239,6 +239,7 @@ export default function LeftSidebar() {
                           onContextMenu={(e) => { e.preventDefault(); setVolCtxMenu({ x: e.clientX, y: e.clientY, volume }); }}>
                           {expandedVolume === volume.id ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                           <input autoFocus
+                            ref={el => el?.focus()}
                             className="flex-1 px-1 py-0 text-xs border border-brand-primary rounded bg-bg-primary"
                             value={renameValue}
                             onChange={e => setRenameValue(e.target.value)}
@@ -258,7 +259,7 @@ export default function LeftSidebar() {
                         </div>
                       ) : (
                         <button className="w-full pl-10 pr-3 py-1.5 text-left text-sm hover:bg-bg-hover flex items-center gap-1.5 transition-colors group"
-                          onClick={() => handleExpandVolume(volume.id)}
+                          onClick={() => { if (batchVolumeId === volume.id) { setBatchVolumeId(null); setSelectedChapters(new Set()); } handleExpandVolume(volume.id); }}
                           onContextMenu={(e) => { e.preventDefault(); setVolCtxMenu({ x: e.clientX, y: e.clientY, volume }); }}>
                           {expandedVolume === volume.id ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                           <span className="truncate flex-1">
@@ -283,7 +284,7 @@ export default function LeftSidebar() {
                       {expandedVolume === volume.id && chapters.filter(c => c.volumeId === volume.id).map(chapter => (
                         renamingChapter === chapter.id ? (
                           <div key={chapter.id} className="pl-14 pr-3 py-1 flex items-center gap-1">
-                            <input autoFocus className="flex-1 px-1 py-0 text-xs border border-brand-primary rounded bg-bg-primary"
+                            <input autoFocus ref={el => el?.focus()} className="flex-1 px-1 py-0 text-xs border border-brand-primary rounded bg-bg-primary"
                               value={renameChapterValue} onChange={e => setRenameChapterValue(e.target.value)}
                               onKeyDown={async e => {
                                 if (e.key === 'Enter') { e.preventDefault();
@@ -374,7 +375,7 @@ export default function LeftSidebar() {
                   {defaultChapters.map(chapter => (
                     renamingChapter === chapter.id ? (
                       <div key={chapter.id} className="pl-10 pr-3 py-1 flex items-center gap-1">
-                        <input autoFocus className="flex-1 px-1 py-0 text-sm border border-brand-primary rounded bg-bg-primary"
+                        <input autoFocus ref={el => el?.focus()} className="flex-1 px-1 py-0 text-sm border border-brand-primary rounded bg-bg-primary"
                           value={renameChapterValue}
                           onChange={e => setRenameChapterValue(e.target.value)}
                           onKeyDown={async e => {
@@ -441,12 +442,14 @@ export default function LeftSidebar() {
                 const volId = defVol!.id;
                 const cn = (defaultChapters.length || 0) + 1;
                 const newCh = await apiClient.post(`/volumes/${volId}/chapters`, { title: `章节${cn}`, chapterNumber: cn });
-                apiClient.get(`/volumes/${volId}/chapters`).then(r => setDefaultChapters(r.data.data || []));
+                apiClient.get(`/volumes/${volId}/chapters`).then(r => {
+                  setDefaultChapters(r.data.data || []);
+                  setTimeout(() => setRenamingChapter(newCh.data.data.id, `章节${cn}`), 100);
+                });
                 apiClient.get(`/books/${activeBookForAdd.id}/volumes`).then(r => setVolumes(r.data.data || []));
                 setBookTab(prev => ({ ...prev, [activeBookForAdd.id]: 'toc' }));
                 setExpandedBook(activeBookForAdd.id);
                 setShowAddMenu(false);
-                setTimeout(() => setRenamingChapter(newCh.data.data.id, `章节${cn}`), 150);
               }} className="w-full px-3 py-2 text-left text-sm hover:bg-bg-hover rounded flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-current inline-block shrink-0 ml-1" />
                 分卷外创建
