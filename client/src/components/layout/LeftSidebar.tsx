@@ -12,6 +12,7 @@ import SettingsDialog from './SettingsDialog';
 import BookCreateDialog from './BookCreateDialog';
 import BookContextMenu from './BookContextMenu';
 import VolumeContextMenu from './VolumeContextMenu';
+import ChapterContextMenu from './ChapterContextMenu';
 import BookExportDialog from './BookExportDialog';
 import BookDetailDialog from './BookDetailDialog';
 
@@ -31,6 +32,7 @@ export default function LeftSidebar() {
   const [detailBook, setDetailBook] = useState<any>(null);
   const [deleteBook, setDeleteBook] = useState<any>(null);
   const [volCtxMenu, setVolCtxMenu] = useState<{ x: number; y: number; volume: any } | null>(null);
+  const [chCtxMenu, setChCtxMenu] = useState<{ x: number; y: number; chapter: any; volumeId: string } | null>(null);
   const [batchVolumeId, setBatchVolumeId] = useState<string | null>(null);
   const [selectedChapters, setSelectedChapters] = useState<Set<string>>(new Set());
   const [showAddMenu, setShowAddMenu] = useState(false);
@@ -297,7 +299,8 @@ export default function LeftSidebar() {
                             <input type="checkbox" checked={selectedChapters.has(chapter.id)} onChange={() => setSelectedChapters(prev => { const n = new Set(prev); n.has(chapter.id) ? n.delete(chapter.id) : n.add(chapter.id); return n; })} className="shrink-0 w-3.5 h-3.5" />
                           )}
                           <button className="flex-1 flex items-center gap-1.5 text-left"
-                            onClick={() => batchVolumeId === volume.id ? null : handleSelectChapter(chapter.id, book.id, volume.id)}>
+                            onClick={() => batchVolumeId === volume.id ? null : handleSelectChapter(chapter.id, book.id, volume.id)}
+                            onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setChCtxMenu({ x: e.clientX, y: e.clientY, chapter, volumeId: volume.id }); }}>
                             <span className="truncate">第{chapter.chapterNumber}章 {chapter.title}</span>
                             <span className="text-text-tertiary text-xs">{chapter.wordCount}字</span>
                           </button>
@@ -311,7 +314,16 @@ export default function LeftSidebar() {
                       {/* 批量操作栏 */}
                       {batchVolumeId === volume.id && (
                         <div className="pl-10 pr-3 py-1 flex items-center gap-2 text-xs border-t border-border-primary bg-brand-primary/5">
-                          <span className="text-text-secondary">{selectedChapters.size ? `已选 ${selectedChapters.size} 章` : '选择章节'}</span>
+                          <button onClick={() => {
+                            const allIds = chapters.filter(c => c.volumeId === volume.id).map(c => c.id);
+                            setSelectedChapters(prev => prev.size === allIds.length ? new Set() : new Set(allIds));
+                          }} className="text-xs text-text-secondary hover:text-text-primary">
+                            {(() => {
+                              const allIds = chapters.filter(c => c.volumeId === volume.id).map(c => c.id);
+                              return allIds.length > 0 && selectedChapters.size === allIds.length ? '取消全选' : '全选';
+                            })()}
+                          </button>
+                          <span className="text-text-tertiary">{selectedChapters.size ? `已选 ${selectedChapters.size}` : ''}</span>
                           <div className="flex-1" />
                           {volumes.filter(v => v.bookId === book.id).length > 0 && (
                             <><span className="text-text-tertiary text-xs">移至</span>
@@ -385,6 +397,10 @@ export default function LeftSidebar() {
                         onClick={() => {
                           const defaultVol = volumes.find(v => v.bookId === book.id && v.title === '默认');
                           if (defaultVol) handleSelectChapter(chapter.id, book.id, defaultVol.id);
+                        }}
+                        onContextMenu={(e) => { e.preventDefault(); e.stopPropagation();
+                          const defVol = volumes.find(v => v.bookId === book.id && v.title === '默认');
+                          setChCtxMenu({ x: e.clientX, y: e.clientY, chapter, volumeId: defVol?.id || '' });
                         }}>
                         <span className="truncate">第{chapter.chapterNumber}章 {chapter.title}</span>
                         <span className="text-text-tertiary text-xs">{chapter.wordCount}字</span>
@@ -516,6 +532,22 @@ export default function LeftSidebar() {
             if (confirm('删除此分卷及所有章节？')) {
               apiClient.delete(`/books/${v.bookId}/volumes/${v.id}`).then(() => {
                 apiClient.get(`/books/${v.bookId}/volumes`).then(r => setVolumes(r.data.data));
+              });
+            }
+          }} />
+      )}
+      {chCtxMenu && (
+        <ChapterContextMenu x={chCtxMenu.x} y={chCtxMenu.y} onClose={() => setChCtxMenu(null)}
+          onRename={() => { setRenamingChapter(chCtxMenu.chapter.id, chCtxMenu.chapter.title); }}
+          onDelete={() => {
+            if (confirm('删除此章节？')) {
+              apiClient.delete(`/volumes/${chCtxMenu.volumeId}/chapters/${chCtxMenu.chapter.id}`).then(() => {
+                const defVol = volumes.find(v => v.title === '默认');
+                if (chCtxMenu.volumeId === defVol?.id) {
+                  apiClient.get(`/volumes/${defVol.id}/chapters`).then(r => setDefaultChapters(r.data.data || []));
+                } else {
+                  apiClient.get(`/volumes/${chCtxMenu.volumeId}/chapters`).then(r => setChapters(r.data.data || []));
+                }
               });
             }
           }} />

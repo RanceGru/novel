@@ -32,7 +32,7 @@ export default function VolumeContextMenu({ x, y, onClose, onNewChapter, onRenam
       </button>
       <button onClick={() => { onRename(); onClose(); }}
         className="w-full px-3 py-1.5 text-xs text-left flex items-center gap-2 hover:bg-bg-hover">
-        <Edit3 size={13} /> 重命名
+        <Edit3 size={13} /> 分卷重命名
       </button>
       <button onClick={() => { onDelete(); onClose(); }}
         className="w-full px-3 py-1.5 text-xs text-left flex items-center gap-2 hover:bg-bg-hover text-error">
