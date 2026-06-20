@@ -4,11 +4,12 @@ import { useAuthStore } from '../../stores/auth.store';
 import { useProjectStore } from '../../stores/project.store';
 import { useEditorStore } from '../../stores/editor.store';
 import { apiClient } from '../../services/api.service';
-import { FileText, Plus, ChevronRight, ChevronDown, Settings, FolderPlus, FilePlus } from 'lucide-react';
+import { FileText, Plus, ChevronRight, ChevronDown, Settings, FolderPlus, FilePlus, Search, Library } from 'lucide-react';
 import OutlineTree from '../outline/OutlineTree';
 import CharacterList from '../characters/CharacterList';
 import WorldSettingList from '../worldbuilding/WorldSettingList';
 import SettingsDialog from './SettingsDialog';
+import SearchDialog from './SearchDialog';
 import BookCreateDialog from './BookCreateDialog';
 import BookContextMenu from './BookContextMenu';
 import VolumeContextMenu from './VolumeContextMenu';
@@ -23,6 +24,7 @@ export default function LeftSidebar() {
   const [expandedBook, setExpandedBook] = useState<string | null>(null);
   const [expandedVolume, setExpandedVolume] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
   const [showNewBook, setShowNewBook] = useState(false);
   const [bookTab, setBookTab] = useState<Record<string, 'toc' | 'related' | null>>({});
   // 右键菜单
@@ -122,30 +124,32 @@ export default function LeftSidebar() {
   };
 
   return (
-    <aside className="w-80 bg-bg-secondary border-r border-border-primary flex flex-col shrink-0 overflow-y-auto">
-      {/* 标题 */}
-      <div className="p-3 text-xs font-semibold text-text-tertiary uppercase tracking-wider">
-        📚 写作台
+    <aside className="w-80 bg-bg-secondary border-r border-border-primary flex flex-col shrink-0 h-full">
+      {/* 功能区 — 4 */}
+      <div className="flex-[4] flex flex-col overflow-hidden border-b border-border-primary">
+        <div className="p-3 text-sm font-semibold text-text-primary">功能区</div>
+        <div className="px-3 pb-3 space-y-2">
+          <button onClick={() => setShowSearch(true)}
+            className="w-full px-3 py-1.5 text-xs border border-border-primary rounded bg-bg-primary text-text-secondary hover:bg-bg-hover transition-colors flex items-center gap-2">
+            <Search size={14} className="text-text-tertiary" /> 搜索...
+          </button>
+          <button onClick={() => setShowNewBook(true)}
+            className="w-full px-3 py-2 text-xs bg-bg-primary text-text-primary border border-border-primary rounded hover:bg-bg-hover transition-colors flex items-center gap-2">
+            <Library size={16} /> 新建作品
+          </button>
+        </div>
+
+        <BookCreateDialog open={showNewBook} onClose={() => setShowNewBook(false)}
+          onCreated={(newBook) => setBooks([newBook, ...books])}
+          bookCount={books.length}
+          existingTitles={books.map(b => b.title)} />
       </div>
 
-      {/* 加载中 */}
-      {loading && (
-        <div className="px-3 py-2 text-xs text-text-tertiary">加载中...</div>
-      )}
-
-      {/* 新建作品 */}
-      <button onClick={() => setShowNewBook(true)}
-        className="mx-3 mb-2 px-3 py-1.5 text-xs bg-brand-primary text-brand-text rounded hover:bg-brand-hover transition-colors flex items-center gap-1">
-        <Plus size={14} /> 新建作品
-      </button>
-
-      <BookCreateDialog open={showNewBook} onClose={() => setShowNewBook(false)}
-        onCreated={(newBook) => setBooks([newBook, ...books])}
-        bookCount={books.length}
-        existingTitles={books.map(b => b.title)} />
-
-      {/* 书籍列表 */}
-      <nav className="flex-1">
+      {/* 写作台 — 6 */}
+      <div className="flex-[6] flex flex-col overflow-hidden">
+        <div className="p-3 text-sm font-semibold text-text-primary">写作区</div>
+        {loading && <div className="px-3 py-2 text-xs text-text-tertiary">加载中...</div>}
+        <nav className="flex-1 overflow-y-auto">
         {books.map((book) => (
           <div key={book.id}>
             <button
@@ -484,26 +488,12 @@ export default function LeftSidebar() {
         </div>
       )}
       </nav>
-
-      {/* 纲树 */}
-      <div className="border-t border-border-primary">
-        <OutlineTree />
       </div>
 
-      {/* 角色 */}
-      <div className="border-t border-border-primary">
-        <CharacterList />
-      </div>
-
-      {/* 世界观 */}
-      <div className="border-t border-border-primary">
-        <WorldSettingList />
-      </div>
-
-      {/* 底部设置 */}
-      <div className="p-2 border-t border-border-primary">
+      {/* 底部设置 — 1/3 */}
+      <div className="flex-[0.33] flex items-center border-t border-border-primary">
         <button onClick={() => setShowSettings(true)}
-          className="w-full py-1.5 text-xs text-text-secondary hover:text-text-primary hover:bg-bg-hover rounded flex items-center justify-center gap-1.5 transition-colors">
+          className="w-full py-2 text-xs text-text-secondary hover:text-text-primary hover:bg-bg-hover flex items-center justify-center gap-1.5 transition-colors">
           <Settings size={14} /> 设置
         </button>
       </div>
@@ -593,6 +583,7 @@ export default function LeftSidebar() {
         </div>
       )}
 
+      <SearchDialog open={showSearch} onClose={() => setShowSearch(false)} />
       <SettingsDialog open={showSettings} onClose={() => setShowSettings(false)} />
     </aside>
   );
