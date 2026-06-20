@@ -17,7 +17,7 @@ import BookExportDialog from './BookExportDialog';
 import BookDetailDialog from './BookDetailDialog';
 
 export default function LeftSidebar() {
-  const { books, setBooks, volumes, setVolumes, chapters, setChapters, setCurrentBook, loading, setLoading } =
+  const { books, setBooks, volumes, setVolumes, chapters, setChapters, currentBook, setCurrentBook, loading, setLoading } =
     useProjectStore();
   const { setCurrentChapter } = useEditorStore();
   const [expandedBook, setExpandedBook] = useState<string | null>(null);
@@ -199,18 +199,17 @@ export default function LeftSidebar() {
                   <button
                     onClick={async (e) => { e.stopPropagation();
                       console.log('📁+ clicked');
-                      const vn = volumes.filter(v => v.bookId === book.id).length + 1;
+                      const vn = volumes.filter(v => v.bookId === book.id && v.title !== '默认').length + 1;
                       const title = `分卷${vn}`;
                       const res = await apiClient.post(`/books/${book.id}/volumes`, { title, volumeNumber: vn });
                       console.log('volume created:', res.data.data.id);
                       apiClient.get(`/books/${book.id}/volumes`).then(r => {
-                        console.log('volumes reloaded:', r.data.data.length);
                         setVolumes(r.data.data || []);
+                        setBookTab(prev => ({ ...prev, [book.id]: 'toc' }));
+                        setExpandedBook(book.id);
+                        setExpandedVolume(res.data.data.id);
+                        setTimeout(() => { setRenaming(res.data.data.id); setRenameValue(title); }, 100);
                       });
-                      setBookTab(prev => ({ ...prev, [book.id]: 'toc' }));
-                      setExpandedBook(book.id);
-                      setExpandedVolume(res.data.data.id);
-                      setTimeout(() => { setRenaming(res.data.data.id); setRenameValue(title); }, 200);
                     }}
                     className="inline-flex shrink-0 rounded hover:bg-bg-active text-text-tertiary hover:text-text-primary transition-colors p-0.5"
                     title="新建分卷">
@@ -239,7 +238,7 @@ export default function LeftSidebar() {
                           onContextMenu={(e) => { e.preventDefault(); setVolCtxMenu({ x: e.clientX, y: e.clientY, volume }); }}>
                           {expandedVolume === volume.id ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                           <input autoFocus
-                            ref={el => el?.focus()}
+                            ref={el => { if (el) setTimeout(() => el.focus(), 0); }}
                             className="flex-1 px-1 py-0 text-xs border border-brand-primary rounded bg-bg-primary"
                             value={renameValue}
                             onChange={e => setRenameValue(e.target.value)}
@@ -284,7 +283,7 @@ export default function LeftSidebar() {
                       {expandedVolume === volume.id && chapters.filter(c => c.volumeId === volume.id).map(chapter => (
                         renamingChapter === chapter.id ? (
                           <div key={chapter.id} className="pl-14 pr-3 py-1 flex items-center gap-1">
-                            <input autoFocus ref={el => el?.focus()} className="flex-1 px-1 py-0 text-xs border border-brand-primary rounded bg-bg-primary"
+                            <input autoFocus ref={el => { if (el) setTimeout(() => el.focus(), 0); }} className="flex-1 px-1 py-0 text-xs border border-brand-primary rounded bg-bg-primary"
                               value={renameChapterValue} onChange={e => setRenameChapterValue(e.target.value)}
                               onKeyDown={async e => {
                                 if (e.key === 'Enter') { e.preventDefault();
@@ -375,7 +374,7 @@ export default function LeftSidebar() {
                   {defaultChapters.map(chapter => (
                     renamingChapter === chapter.id ? (
                       <div key={chapter.id} className="pl-10 pr-3 py-1 flex items-center gap-1">
-                        <input autoFocus ref={el => el?.focus()} className="flex-1 px-1 py-0 text-sm border border-brand-primary rounded bg-bg-primary"
+                        <input autoFocus ref={el => { if (el) setTimeout(() => el.focus(), 0); }} className="flex-1 px-1 py-0 text-sm border border-brand-primary rounded bg-bg-primary"
                           value={renameChapterValue}
                           onChange={e => setRenameChapterValue(e.target.value)}
                           onKeyDown={async e => {
@@ -582,6 +581,11 @@ export default function LeftSidebar() {
               <button onClick={async () => {
                 await apiClient.delete(`/books/${deleteBook.id}`);
                 setBooks(books.filter(b => b.id !== deleteBook.id));
+                // 清理关联数据
+                setVolumes(volumes.filter(v => v.bookId !== deleteBook.id));
+                setChapters([]);
+                setDefaultChapters([]);
+                if (currentBook?.id === deleteBook.id) setCurrentBook(null);
                 setDeleteBook(null);
               }} className="px-4 py-1.5 text-sm bg-error text-white rounded hover:bg-error/80">确认删除</button>
             </div>
