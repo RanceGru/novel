@@ -8,6 +8,7 @@ import { FileText, Plus, ChevronRight, ChevronDown, Settings, FolderPlus, FilePl
 import OutlineTree from '../outline/OutlineTree';
 import CharacterList from '../characters/CharacterList';
 import WorldSettingList from '../worldbuilding/WorldSettingList';
+import RelatedTab from './RelatedTab';
 import SettingsDialog from './SettingsDialog';
 import SearchDialog from './SearchDialog';
 import BookCreateDialog from './BookCreateDialog';
@@ -180,10 +181,8 @@ export default function LeftSidebar() {
                 </div>
                 {/* 相关内容 */}
                 {bookTab[book.id] === 'related' && (
-                  <div className="pl-10 pr-2 py-1 space-y-0.5">
-                    <OutlineTree />
-                    <CharacterList />
-                    <WorldSettingList />
+                  <div className="py-1">
+                    <RelatedTab bookId={book.id} />
                   </div>
                 )}
               </div>
