@@ -285,7 +285,7 @@ export default function LeftSidebar() {
                       )}
                       {expandedVolume === volume.id && chapters.filter(c => c.volumeId === volume.id).map(chapter => (
                         renamingChapter === chapter.id ? (
-                          <div key={chapter.id} className="pl-14 pr-3 py-1 flex items-center gap-1">
+                          <div key={chapter.id} className="pl-16 pr-3 py-1 flex items-center gap-1">
                             <input autoFocus ref={el => { if (el) setTimeout(() => el.focus(), 0); }} className="flex-1 px-1 py-0 text-xs border border-brand-primary rounded bg-bg-primary"
                               value={renameChapterValue} onChange={e => setRenameChapterValue(e.target.value)}
                               onKeyDown={async e => {
@@ -297,7 +297,7 @@ export default function LeftSidebar() {
                               }} onBlur={() => setRenamingChapter(null as any)} />
                           </div>
                         ) : (
-                        <div key={chapter.id} className={`flex items-center gap-1 ${batchVolumeId === volume.id ? 'pl-8' : 'pl-14'} pr-3 py-1 text-xs hover:bg-bg-hover text-text-secondary group`}>
+                        <div key={chapter.id} className={`flex items-center gap-1 ${batchVolumeId === volume.id ? 'pl-8' : 'pl-16'} pr-3 py-1 text-sm hover:bg-bg-hover text-text-secondary group`}>
                           {batchVolumeId === volume.id && (
                             <input type="checkbox" checked={selectedChapters.has(chapter.id)} onChange={() => setSelectedChapters(prev => { const n = new Set(prev); n.has(chapter.id) ? n.delete(chapter.id) : n.add(chapter.id); return n; })} className="shrink-0 w-3.5 h-3.5" />
                           )}
@@ -377,6 +377,7 @@ export default function LeftSidebar() {
                   {defaultChapters.map(chapter => (
                     renamingChapter === chapter.id ? (
                       <div key={chapter.id} className="pl-10 pr-3 py-1 flex items-center gap-1">
+                        <span className="w-3 shrink-0" />
                         <input autoFocus ref={el => { if (el) setTimeout(() => el.focus(), 0); }} className="flex-1 px-1 py-0 text-sm border border-brand-primary rounded bg-bg-primary"
                           value={renameChapterValue}
                           onChange={e => setRenameChapterValue(e.target.value)}
@@ -396,6 +397,7 @@ export default function LeftSidebar() {
                       </div>
                     ) : (
                     <div key={chapter.id} className="w-full pl-10 pr-3 py-1.5 text-left text-sm hover:bg-bg-hover flex items-center gap-1.5 transition-colors text-text-secondary group">
+                      <span className="w-3 shrink-0" />
                       <button className="flex-1 flex items-center gap-1.5 text-left"
                         onClick={() => {
                           const defaultVol = volumes.find(v => v.bookId === book.id && v.title === '默认');
