@@ -11,7 +11,7 @@ import WorldSettingList from '../worldbuilding/WorldSettingList';
 import RelatedTab from './RelatedTab';
 import SettingsDialog from './SettingsDialog';
 import SearchDialog from './SearchDialog';
-import BookCreateDialog from './BookCreateDialog';
+import BookFormDialog from './BookFormDialog';
 import BookContextMenu from './BookContextMenu';
 import VolumeContextMenu from './VolumeContextMenu';
 import ChapterContextMenu from './ChapterContextMenu';
@@ -140,7 +140,7 @@ export default function LeftSidebar() {
           </button>
         </div>
 
-        <BookCreateDialog open={showNewBook} onClose={() => setShowNewBook(false)}
+        <BookFormDialog open={showNewBook} onClose={() => setShowNewBook(false)}
           onCreated={(newBook) => setBooks([newBook, ...books])}
           bookCount={books.length}
           existingTitles={books.map(b => b.title)} />
@@ -554,7 +554,7 @@ export default function LeftSidebar() {
       )}
 
       {/* 各弹窗 */}
-      <BookCreateDialog open={!!editBook} editBook={editBook}
+      <BookFormDialog open={!!editBook} editBook={editBook}
         onClose={() => setEditBook(null)}
         onCreated={(updated) => { setBooks(books.map(b => b.id === updated.id ? updated : b)); }}
         bookCount={books.length}

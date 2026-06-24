@@ -4,6 +4,7 @@ import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { MemoryService } from './memory.service';
 import { VectorSearchService } from './vector-search.service';
 import { MemoryExtractionService } from './memory-extraction.service';
+import { GraphRAGService } from './graph-rag.service';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -17,6 +18,7 @@ export class MemoryController {
     private memoryService: MemoryService,
     private vectorSearch: VectorSearchService,
     private extractionService: MemoryExtractionService,
+    private graphRAG: GraphRAGService,
     @InjectRepository(MemoryEvent) private eventRepo: Repository<MemoryEvent>,
     @InjectRepository(Foreshadow) private foreshadowRepo: Repository<Foreshadow>,
   ) {}
@@ -28,9 +30,9 @@ export class MemoryController {
   }
 
   @Post('search')
-  @ApiOperation({ summary: '语义记忆搜索' })
-  async search(@Param('bookId') bookId: string, @Body() body: { query: string; filters?: any; limit?: number }) {
-    return this.vectorSearch.search(bookId, body.query, body.filters, body.limit);
+  @ApiOperation({ summary: '语义记忆搜索（支持重排序）' })
+  async search(@Param('bookId') bookId: string, @Body() body: { query: string; filters?: any; limit?: number; rerank?: boolean }) {
+    return this.vectorSearch.search(bookId, body.query, body.filters, body.limit, undefined, body.rerank);
   }
 
   @Get('events')
@@ -63,5 +65,29 @@ export class MemoryController {
     @Body('chapterId') chapterId: string,
   ) {
     return this.memoryService.assembleContext(bookId, chapterId);
+  }
+
+  @Get('graph')
+  @ApiOperation({ summary: '获取作品知识图谱' })
+  async getGraph(@Param('bookId') bookId: string) {
+    return this.graphRAG.buildGraph(bookId);
+  }
+
+  @Post('graph/query')
+  @ApiOperation({ summary: '推理查询（基于知识图谱）' })
+  async reasoningQuery(
+    @Param('bookId') bookId: string,
+    @Body('question') question: string,
+  ) {
+    return this.graphRAG.reasoningQuery(bookId, question);
+  }
+
+  @Post('graph/paths')
+  @ApiOperation({ summary: '查找两节点间的关联路径' })
+  async findPaths(
+    @Param('bookId') bookId: string,
+    @Body() body: { source: string; target: string },
+  ) {
+    return this.graphRAG.findPaths(bookId, body.source, body.target);
   }
 }

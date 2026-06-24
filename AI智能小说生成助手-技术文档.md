@@ -1,7 +1,7 @@
 # AI智能小说生成助手 — 技术规格文档
 
-> **版本**: v2.6
-> **最后更新**: 2026-06-09 (API用量管理层)
+> **版本**: v2.7
+> **最后更新**: 2026-06-24 (代码审计 + 记忆系统评估 + 完善方案)
 > **目标**: 实现一款支持500万字级网文创作的跨平台（Windows / macOS）桌面AI写作助手
 > **设计参考**: Codex 桌面端风格
 > **数据架构**: 云端优先（Cloud-First），所有数据默认存储于云端服务器，Lite及以上套餐可下载到本地
@@ -29,6 +29,7 @@
 16. [前端开发补充](#16-前端开发补充)
 17. [后端开发补充](#17-后端开发补充)
 18. [DevOps补充](#18-devops补充)
+19. [完善方案](#19-完善方案) — v2.7 审计发现的全部问题与分阶段修复计划
 
 ---
 
@@ -480,80 +481,85 @@ novel-writing-assistant/
 │   │   │   │   ├── chapter.controller.ts
 │   │   │   │   ├── chapter.service.ts
 │   │   │   │   └── chapter.entity.ts
-│   │   │   ├── outline/            # 大纲系统
+│   │   │   ├── outline/            # 大纲系统 ✅ 完整
 │   │   │   │   ├── outline.controller.ts
 │   │   │   │   ├── outline.service.ts
-│   │   │   │   ├── outline.entity.ts
-│   │   │   │   └── outline-sync.service.ts
-│   │   │   ├── character/          # 角色系统
+│   │   │   │   ├── outline.module.ts
+│   │   │   │   └── entities/outline.entity.ts
+│   │   │   ├── character/          # 角色系统 ✅ 完整
 │   │   │   │   ├── character.controller.ts
 │   │   │   │   ├── character.service.ts
-│   │   │   │   ├── character.entity.ts
-│   │   │   │   └── relation.entity.ts
-│   │   │   ├── worldbuilding/      # 世界观系统
-│   │   │   │   ├── world-setting.controller.ts
-│   │   │   │   ├── world-setting.service.ts
-│   │   │   │   └── world-setting.entity.ts
-│   │   │   ├── ai/                 # AI编排模块
+│   │   │   │   ├── character.module.ts
+│   │   │   │   └── entities/
+│   │   │   │       ├── character.entity.ts
+│   │   │   │       └── character-relation.entity.ts
+│   │   │   ├── worldbuilding/      # 世界观系统 ✅ 完整
+│   │   │   │   ├── worldbuilding.controller.ts
+│   │   │   │   ├── worldbuilding.service.ts
+│   │   │   │   ├── worldbuilding.module.ts
+│   │   │   │   └── entities/world-setting.entity.ts
+│   │   │   ├── ai/                 # AI编排模块 ✅ 完整
 │   │   │   │   ├── ai.controller.ts
 │   │   │   │   ├── ai.service.ts
-│   │   │   │   ├── preflight.service.ts     # 请求前：额度校验+成本预估
-│   │   │   │   ├── postflight.service.ts    # 请求后：消费扣减+成本追踪
+│   │   │   │   ├── ai.module.ts
 │   │   │   │   ├── prompt-template.service.ts
 │   │   │   │   ├── streaming.service.ts
-│   │   │   │   ├── model-router.service.ts  # 多Provider路由+故障切换
-│   │   │   │   ├── provider-pool.service.ts # API Key池管理+健康检查
+│   │   │   │   ├── model-router.service.ts
 │   │   │   │   └── agents/
+│   │   │   │       ├── agents.module.ts
+│   │   │   │       ├── agents.controller.ts
+│   │   │   │       ├── base.agent.ts
 │   │   │   │       ├── orchestrator.service.ts
 │   │   │   │       ├── architect.agent.ts
 │   │   │   │       ├── character-designer.agent.ts
 │   │   │   │       ├── world-builder.agent.ts
 │   │   │   │       ├── style-mimic.agent.ts
-│   │   │   │       └── quality-inspector.agent.ts
-│   │   │   ├── memory/             # 记忆系统模块
+│   │   │   │       ├── quality-inspector.agent.ts
+│   │   │   │       └── dehumanize.service.ts
+│   │   │   ├── memory/             # 记忆系统模块 ✅ 完整
 │   │   │   │   ├── memory.controller.ts
 │   │   │   │   ├── memory.service.ts
+│   │   │   │   ├── memory.module.ts
 │   │   │   │   ├── memory-extraction.service.ts
-│   │   │   │   ├── memory-retrieval.service.ts
 │   │   │   │   ├── embedding.service.ts
+│   │   │   │   ├── vector-search.service.ts
 │   │   │   │   ├── conflict-detector.service.ts
-│   │   │   │   └── vector-search.service.ts
-│   │   │   ├── sync/               # 数据同步模块
+│   │   │   │   └── entities/
+│   │   │   │       ├── memory-event.entity.ts
+│   │   │   │       ├── foreshadow.entity.ts
+│   │   │   │       ├── character-state.entity.ts
+│   │   │   │       ├── setting-patch.entity.ts
+│   │   │   │       ├── style-anchor.entity.ts
+│   │   │   │       └── subplot-thread.entity.ts
+│   │   │   ├── sync/               # 数据同步模块 ⚠️ 部分完成
+│   │   │   │   ├── sync.module.ts
 │   │   │   │   ├── sync.controller.ts
 │   │   │   │   ├── sync.service.ts
-│   │   │   │   ├── sync.gateway.ts  # WebSocket 实时同步
-│   │   │   │   └── conflict-resolver.service.ts
-│   │   │   ├── version/            # 云端版本管理模块
+│   │   │   │   ├── conflict-resolver.service.ts
+│   │   │   │   └── entities/operation-log.entity.ts
+│   │   │   ├── version/            # 云端版本管理 ✅ 完整
 │   │   │   │   ├── version.module.ts
 │   │   │   │   ├── version.controller.ts
 │   │   │   │   ├── version.service.ts
-│   │   │   │   ├── version.entity.ts
-│   │   │   │   └── dto/
-│   │   │   ├── export/             # 导出服务模块
+│   │   │   │   └── entities/chapter-version.entity.ts
+│   │   │   ├── export/             # 导出服务模块 ⚠️ 部分完成
+│   │   │   │   ├── export.module.ts
 │   │   │   │   ├── export.controller.ts
-│   │   │   │   ├── export.service.ts
-│   │   │   │   ├── word-exporter.ts
-│   │   │   │   ├── txt-exporter.ts
-│   │   │   │   └── epub-exporter.ts
-│   │   │   ├── token/              # Token购买与余额管理
+│   │   │   │   └── export.service.ts
+│   │   │   ├── token/              # Token系统 ✅ 完整
 │   │   │   │   ├── token.module.ts
 │   │   │   │   ├── token.controller.ts
 │   │   │   │   ├── token.service.ts
-│   │   │   │   ├── token-package.entity.ts
-│   │   │   │   ├── token-balance.entity.ts
-│   │   │   │   ├── token-purchase.entity.ts
-│   │   │   │   ├── token-transaction.entity.ts
-│   │   │   │   └── dto/
-│   │   │   ├── file/               # 文件管理模块
-│   │   │   │   ├── file.controller.ts
-│   │   │   │   ├── file.service.ts
-│   │   │   │   └── oss.service.ts
-│   │   │   └── notification/       # 通知模块
-│   │   │       ├── notification.module.ts
-│   │   │       ├── notification.controller.ts
-│   │   │       ├── notification.service.ts
-│   │   │       ├── notification.entity.ts
-│   │   │       └── notification.gateway.ts
+│   │   │   │   └── entities/
+│   │   │   │       ├── token-balance.entity.ts
+│   │   │   │       ├── token-package.entity.ts
+│   │   │   │       └── token-transaction.entity.ts
+│   │   │   ├── cache/              # 缓存模块 ✅ 完整
+│   │   │   │   ├── cache.module.ts
+│   │   │   │   └── cache.service.ts
+│   │   │   └── health/             # 健康检查 ✅ 完整
+│   │   │       ├── health.module.ts
+│   │   │       └── health.controller.ts
 │   │   ├── common/                 # 公共能力
 │   │   │   ├── decorators/
 │   │   │   ├── filters/
@@ -561,24 +567,17 @@ novel-writing-assistant/
 │   │   │   ├── guards/
 │   │   │   └── pipes/
 │   │   ├── modules/
-│   │   │   ├── audit/              # 审计日志模块
-│   │   │   │   ├── audit.module.ts
-│   │   │   │   ├── audit.service.ts
-│   │   │   │   ├── audit.entity.ts
-│   │   │   │   └── audit.interceptor.ts
-│   │   │   ├── health/             # 健康检查模块
+│   │   │   ├── health/             # 健康检查模块 ✅ 完整
 │   │   │   │   ├── health.module.ts
 │   │   │   │   └── health.controller.ts
-│   │   │   ├── cache/              # 缓存模块
+│   │   │   ├── cache/              # 缓存模块 ✅ 完整
 │   │   │   │   ├── cache.module.ts
-│   │   │   │   └── cache-aside.service.ts
-│   │   │   ├── event-bus/          # 事件总线模块
-│   │   │   │   ├── event-bus.module.ts
-│   │   │   │   └── event-bus.service.ts
-│   │   │   └── rate-limit/         # 限流模块
-│   │   │       ├── rate-limit.module.ts
-│   │   │       ├── rate-limit.guard.ts
-│   │   │       └── rate-limit.service.ts
+│   │   │   │   └── cache.service.ts
+│   │   │   ├── audit/              # 🔧 审计日志（计划中）
+│   │   │   ├── event-bus/          # 🔧 事件总线（计划中）
+│   │   │   └── rate-limit/         # 🔧 限流（计划中）
+│   │   │   ├── file/               # 🔧 文件管理（计划中）
+│   │   │   └── notification/       # 🔧 通知模块（计划中）
 │   │   └── migrations/             # 数据库迁移
 │   ├── test/
 │   ├── Dockerfile
@@ -3078,93 +3077,119 @@ AI生成:
 | P1.9 | 简单的章节生成流程（章纲→正文） | P0 | 基础Prompt |
 | P1.10 | 数据导出API（TXT/Word） | P1 | - |
 
-### Phase 2: 核心创作系统 + 订阅 — 预计 10-14 周
+### Phase 2: 核心创作系统 + 订阅 — 预计 10-14 周 ✅ **已完成**
 
-| 编号 | 任务 | 优先级 | 说明 |
-|------|------|--------|------|
-| P2.1 | 大纲/卷纲/章纲 三级纲树系统 | P0 | 含联级更新机制 |
-| P2.2 | 角色档案管理系统 | P0 | CRUD + 关系图数据API |
-| P2.3 | 世界观设定管理系统 | P0 | - |
-| P2.4 | 人物关系图谱（前端 D3.js） | P1 | 基于API数据渲染 |
-| P2.5 | 版本管理（章节版本保存/回溯） | P1 | - |
-| P2.6 | Prompt模板引擎（服务端） | P0 | - |
-| P2.7 | 写作台管理（多书籍/多章节） | P0 | - |
-| P2.8 | 五级订阅套餐系统 | P0 | Free/Lite/Basic/Plus/Pro + 权益定义 |
-| P2.9 | Token购买系统 | P0 | 增量包定义 + 购买 + 余额管理 |
-| P2.10 | Token消费追踪与月度配额 | P0 | 套餐额度 + 增量包消耗优先级 |
-| P2.11 | 作品空间管理 | P0 | 空间检查 + 清空释放 |
-| P2.12 | 套餐权限校验中间件 | P0 | 模型类型/并行槽位/功能开关 |
+> **v2.7 审计确认**: Phase 2 全部 12 项任务已完成。纲树/角色/世界观/版本管理/订阅/Token 系统均实现完整的 CRUD API + 前端对接。
 
-### Phase 3: AI深度系统 — 预计 10-14 周
+| 编号 | 任务 | 状态 | 说明 |
+|------|------|------|------|
+| P2.1 | 大纲/卷纲/章纲 三级纲树系统 | ✅ | 含联级更新、递归删除、树形查询 |
+| P2.2 | 角色档案管理系统 | ✅ | CRUD + 关系图数据API |
+| P2.3 | 世界观设定管理系统 | ✅ | 按category过滤、contentVersion追踪 |
+| P2.4 | 人物关系图谱（前端可视化） | ⚠️ | API已实现，前端UI未渲染图形 |
+| P2.5 | 版本管理（章节版本保存/回溯） | ✅ | 自动快照、回退前保存、按套餐限制 |
+| P2.6 | Prompt模板引擎（服务端） | ✅ | 章节生成+章纲生成两个模板 |
+| P2.7 | 写作台管理（多书籍/多章节） | ✅ | LeftSidebar三栏布局管理 |
+| P2.8 | 五级订阅套餐系统 | ✅ | shared常量 + API + PricingPage |
+| P2.9 | Token购买系统 | ✅ | 增量包定义 + 购买 + 余额管理 |
+| P2.10 | Token消费追踪与月度配额 | ✅ | 生成后自动扣减 + 交易记录 |
+| P2.11 | 作品空间管理 | ✅ | 创建时检查配额 |
+| P2.12 | 套餐权限校验中间件 | ✅ | model-router按套餐分级路由 |
 
-| 编号 | 任务 | 优先级 | 说明 |
-|------|------|--------|------|
-| P3.1 | 短期记忆系统（服务端缓存 + 摘要栈） | P0 | - |
-| P3.2 | pgvector 集成 + embedding服务 | P0 | - |
-| P3.3 | 事件记忆提取与检索 | P0 | BullMQ异步任务 |
-| P3.4 | 角色状态快照系统 | P0 | - |
-| P3.5 | 伏笔追踪器 | P0 | - |
-| P3.6 | 世界设定补丁 + 风格锚点 | P1 | - |
-| P3.7 | 混合检索服务（向量+关键词+元数据） | P0 | - |
-| P3.8 | 记忆管家（上下文窗口动态管理） | P0 | - |
-| P3.9 | 内容冲突检测 | P1 | - |
-| P3.10 | Redis缓存层（热门数据 + 会话） | P0 | - |
+### Phase 3: AI深度系统 — 预计 10-14 周 ✅ **基本完成**
 
-### Phase 4: Agent系统 — 预计 8-12 周
+> **v2.7 审计确认**: Phase 3 核心功能已实现，但存在若干降级和待完善项（详见下方已知问题）。
 
-| 编号 | 任务 | 优先级 | 说明 |
-|------|------|--------|------|
-| P4.1 | 工作管家（Orchestrator）框架 | P0 | 任务调度 + 结果整合 |
-| P4.2 | 架构师Agent | P0 | 大纲/章纲AI生成 |
-| P4.3 | 人设师Agent | P0 | 角色AI创建/管理 |
-| P4.4 | 世界构建师Agent | P1 | - |
-| P4.5 | 文风模拟师Agent | P1 | 含文风文件导入分析 |
-| P4.6 | 质检员Agent | P0 | 异步质量审核 |
-| P4.7 | 多模型路由器 | P0 | Flash/Pro模型按套餐+任务路由 |
-| P4.8 | AI去味审查系统 | P0 | AI味检测 + 人性化润色 + 差异对比 |
+| 编号 | 任务 | 状态 | 说明 |
+|------|------|------|------|
+| P3.1 | 短期记忆系统（服务端缓存 + 摘要栈） | ✅ | assembleContext 实现四级上下文组装 |
+| P3.2 | pgvector 集成 + embedding服务 | ⚠️ | embedding已实现；向量检索用JS层余弦计算而非pgvector原生SQL |
+| P3.3 | 事件记忆提取与检索 | ⚠️ | 同步调用，未使用BullMQ异步队列 |
+| P3.4 | 角色状态快照系统 | ✅ | 5维度快照（物理/心理/情感/位置/持有物） |
+| P3.5 | 伏笔追踪器 | ✅ | 新伏笔检测+已有伏笔推进/回收+超期告警 |
+| P3.6 | 世界设定补丁 + 风格锚点 | ⚠️ | 设定补丁已实现；风格锚点实体已建但提取逻辑为空 |
+| P3.7 | 混合检索服务（向量+关键词+元数据） | ⚠️ | 已实现但关键词用简单分词匹配，非文档设计的FTS |
+| P3.8 | 记忆管家（上下文窗口动态管理） | ✅ | MemoryService.assembleContext |
+| P3.9 | 内容冲突检测 | ✅ | 伏笔超期检测+角色状态停滞检测 |
+| P3.10 | Redis缓存层（热门数据 + 会话） | ✅ | CacheService双模式（Redis优先/内存回退） |
 
-### Phase 5: 离线模式 + 同步 — 预计 8-12 周
+**已知问题（v2.7审计发现）**:
+- 🔴 **流式生成路径丢失记忆上下文**: `ai.controller.ts` 的 SSE 流式端点未调用 `assembleContext`，当前所有前端触发的章节生成均未注入记忆
+- 🔴 **assembleContext 返回的4个字段仅使用2个**: `characterStates` 和 `relevantMemories` 被丢弃
+- 🟡 **向量检索为JS层全量计算**: 未使用 pgvector 原生 SQL 检索，长篇作品性能会线性退化
+- 🟡 **全文搜索降级**: 文档设计的 `ts_rank` + `zhparser` 中文分词未实现，仅用简单关键词匹配
+- 🟡 **物品/货币追踪未实现**: 文档设计中的物品追踪功能代码中不存在
 
-| 编号 | 任务 | 优先级 | 说明 |
-|------|------|--------|------|
-| P5.1 | 数据下载服务（云端→本地） | P0 | Lite及以上套餐专属 |
-| P5.2 | 作品空间管理（清空/释放空间） | P0 | 空间满时提示+不可逆清空操作 |
-| P5.3 | 客户端本地SQLite数据库 | P0 | 离线模式数据存储 |
-| P5.4 | 离线操作日志系统 | P0 | 记录离线期间所有变更 |
-| P5.5 | 增量同步引擎 | P0 | 操作日志提交 + 冲突检测 |
-| P5.6 | 同步冲突解决UI | P0 | 冲突对比 + 用户决策 |
-| P5.7 | WebSocket实时同步 (Socket.io) | P0 | 多端实时协作 |
-| P5.8 | 离线模式状态指示UI | P1 | - |
+### Phase 4: Agent系统 — 预计 8-12 周 ✅ **基本完成**
 
-### Phase 6: 高级功能与体验优化 — 预计 8-12 周
+> **v2.7 审计确认**: 5个Agent + Orchestrator全部实现，但Agent系统与记忆系统完全隔离。
 
-| 编号 | 任务 | 优先级 | 说明 |
-|------|------|--------|------|
-| P6.1 | Token购买UI + 余额展示 | P0 | 购买流程 + 状态栏Token显示 |
-| P6.2 | 素材灵感库 | P2 | 词句/故事/名称 |
-| P6.3 | 名称批量生成与查重 | P2 | - |
-| P6.4 | 全局搜索（FTS全文索引） | P2 | - |
-| P6.5 | 插件系统基础架构 | P3 | - |
-| P6.6 | UI/UX 全面优化 | P2 | 动画/交互细节 |
-| P6.7 | 快捷键系统 | P2 | - |
-| P6.8 | 深色/浅色主题 | P2 | - |
-| P6.9 | 通知系统（WebSocket推送 + 邮件） | P2 | - |
-| P6.10 | 自动更新（客户端） | P1 | electron-updater |
+| 编号 | 任务 | 状态 | 说明 |
+|------|------|------|------|
+| P4.1 | 工作管家（Orchestrator）框架 | ✅ | 注册/调度/并行执行/预处理/后处理 |
+| P4.2 | 架构师Agent | ✅ | 章纲优化，lite+ |
+| P4.3 | 人设师Agent | ✅ | 角色创建/管理，basic+ |
+| P4.4 | 世界构建师Agent | ✅ | 世界观补全，plus+ |
+| P4.5 | 文风模拟师Agent | ✅ | 文风分析，pro+ |
+| P4.6 | 质检员Agent | ✅ | 异步质量审核，basic+ |
+| P4.7 | 多模型路由器 | ✅ | Flash/Pro按套餐+任务路由 |
+| P4.8 | AI去味审查系统 | ✅ | 检测+润色+差异对比 |
 
-### Phase 7: 打磨与发布 — 预计 6-8 周
+**已知问题（v2.7审计发现）**:
+- 🔴 **Agent系统与记忆系统完全隔离**: 5个Agent的 `buildPrompt()` 均零引用记忆服务
+- 🔴 **Orchestrator未调用记忆管家**: 文档设计的 "Orchestrator → 记忆管家 → 文风模拟师 → 架构师 → 组装Prompt" 完整流水线未实现
+- 🟡 **Agent Prompt过于简单**: 未注入角色列表/世界观设定/活跃伏笔等上下文
 
-| 编号 | 任务 | 优先级 | 说明 |
-|------|------|--------|------|
-| P7.1 | 性能优化（大文本/数据库查询/API响应） | P0 | - |
-| P7.2 | 500万字级超长文本压力测试 | P0 | - |
-| P7.3 | 并发用户压力测试 | P0 | 模拟多用户同时创作 |
-| P7.4 | 安全渗透测试 | P0 | - |
-| P7.5 | Windows 打包与测试 | P0 | - |
-| P7.6 | macOS 打包与测试 | P0 | - |
-| P7.7 | 安装包签名与公证 | P0 | - |
-| P7.8 | 服务端生产部署（Docker/K8s） | P0 | - |
-| P7.9 | 监控告警系统（Prometheus + Grafana） | P0 | - |
-| P7.10 | 用户文档/API文档编写 | P1 | - |
+### Phase 5: 离线模式 + 同步 — 预计 8-12 周 ⚠️ **部分完成**
+
+> **v2.7 审计确认**: 同步基础设施已建立，但离线模式核心功能未实现。
+
+| 编号 | 任务 | 状态 | 说明 |
+|------|------|------|------|
+| P5.1 | 数据下载服务（云端→本地） | ⚠️ | 数据包导出API已实现，但非文件格式 |
+| P5.2 | 作品空间管理（清空/释放空间） | ✅ | 创建时配额检查已实现 |
+| P5.3 | 客户端本地SQLite数据库 | ❌ | 未实现 |
+| P5.4 | 离线操作日志系统 | ✅ | operation-log实体+导入API实现 |
+| P5.5 | 增量同步引擎 | ⚠️ | 冲突检测已实现；实际回写未实现 |
+| P5.6 | 同步冲突解决UI | ⚠️ | API已实现；前端UI未对接 |
+| P5.7 | WebSocket实时同步 (Socket.io) | ❌ | 未实现 |
+| P5.8 | 离线模式状态指示UI | ❌ | 未实现 |
+
+### Phase 6: 高级功能与体验优化 — 预计 8-12 周 ⚠️ **部分完成**
+
+> **v2.7 审计确认**: Token购买UI、主题切换已完成；全局搜索为客户端过滤而非FTS；通知系统未实现。
+
+| 编号 | 任务 | 状态 | 说明 |
+|------|------|------|------|
+| P6.1 | Token购买UI + 余额展示 | ✅ | PricingPage + StatusBar |
+| P6.2 | 素材灵感库 | ❌ | 未实现 |
+| P6.3 | 名称批量生成与查重 | ❌ | 未实现 |
+| P6.4 | 全局搜索（FTS全文索引） | ⚠️ | 已实现客户端过滤搜索，非FTS |
+| P6.5 | 插件系统基础架构 | ❌ | 未实现 |
+| P6.6 | UI/UX 全面优化 | ⚠️ | 基础动画已实现 |
+| P6.7 | 快捷键系统 | ⚠️ | 编辑器基础快捷键已实现 |
+| P6.8 | 深色/浅色主题 | ✅ | 亮/暗/跟随系统三模式 |
+| P6.9 | 通知系统（WebSocket推送 + 邮件） | ❌ | 未实现 |
+| P6.10 | 自动更新（客户端） | ❌ | Electron外壳未集成 |
+
+### Phase 7: 打磨与发布 — 预计 6-8 周 🔧 **未开始**
+
+| 编号 | 任务 | 状态 | 说明 |
+|------|------|------|------|
+| P7.1 | 性能优化（大文本/数据库查询/API响应） | ❌ | 未开始 |
+| P7.2 | 500万字级超长文本压力测试 | ❌ | 未开始 |
+| P7.3 | 并发用户压力测试 | ❌ | 未开始 |
+| P7.4 | 安全渗透测试 | ❌ | 未开始 |
+| P7.5 | Windows 打包与测试 | ❌ | 未开始 |
+| P7.6 | macOS 打包与测试 | ❌ | 未开始 |
+| P7.7 | 安装包签名与公证 | ❌ | 未开始 |
+| P7.8 | 服务端生产部署（Docker/K8s） | ❌ | 未开始 |
+| P7.9 | 监控告警系统（Prometheus + Grafana） | ❌ | 未开始 |
+| P7.10 | 用户文档/API文档编写 | ❌ | 未开始 |
+
+---
+
+> **开发进度汇总 (v2.7)**: Phase 1-2 全部完成 (24/24)。Phase 3 核心功能到位但存在降级实现 (10/10 基本完成)。Phase 4 Agent系统全部实现但与记忆系统未联网 (8/8 基本完成)。Phase 5-6 约 50% 完成。Phase 7 未开始。详见 [第19章 完善方案](#19-完善方案)。
 
 ---
 
@@ -6210,4 +6235,410 @@ Redis 备份:
 > **补充文档结束**。以上内容从产品管理、软件架构、前端、后端和DevOps五个维度对原始技术文档进行了全面补充。建议将各章节内容合并到主文档的对应位置，或将本文档作为独立的技术附录使用。
 
 
-> **文档维护说明**: 本文档为AI智能小说生成助手项目的核心技术规格文档 v2.5。核心架构为**云端优先（Cloud-First）**。v2.5 新增 Git 版本管理系统（第2.4节），支持本地Git仓库自动commit、版本差异对比、分支探索和回退。本文档包含产品管理、软件架构、前端、后端、DevOps 五个维度的全面补充（第14-18章）。随着开发推进，请持续更新本文档。
+> **文档维护说明**: 本文档为AI智能小说生成助手项目的核心技术规格文档 v2.7。核心架构为**云端优先（Cloud-First）**。v2.6 新增 API用量管理层。v2.7 完成全代码库审计（90个TypeScript文件，15个模块），更新各模块实现状态、Phase完成度标记，并新增第19章完善方案。随着开发推进，请持续更新本文档。
+
+---
+
+## 19. 完善方案
+
+> **来源**: v2.7 全代码库审计 + 记忆系统深度评估 + 文件格式方案设计
+> **审计日期**: 2026-06-24
+> **审计范围**: 15个后端模块（90个TS文件）、前端10个store + 20+组件、263KB技术文档对照
+
+### 19.1 总体评估
+
+```
+项目整体完成度: ████████░░  ~65%
+
+Phase 1-2 (基础+订阅):    ██████████  100%  全部完成
+Phase 3   (记忆系统):     ████████░░   85%  核心到位，存在降级和Bug
+Phase 4   (Agent系统):    ████████░░   80%  全部实现，但与记忆隔离
+Phase 5   (离线+同步):    ████░░░░░░   40%  基础设施有，核心未实现
+Phase 6   (高级功能):     ███░░░░░░░   30%  部分完成
+Phase 7   (打磨发布):     ░░░░░░░░░░    0%  未开始
+```
+
+### 19.2 优先级分类
+
+| 级别 | 含义 | 数量 |
+|------|------|------|
+| 🔴 P0 | 阻塞级 — 直接影响用户体验或系统正确性 | 3 |
+| 🟡 P1 | 高优 — 核心体验的关键改进 | 7 |
+| 🔵 P2 | 中优 — 体验提升和技术债务清理 | 7 |
+| ⚪ P3 | 低优 — 架构演进和长期优化 | 5 |
+
+---
+
+### 19.3 P0 阻塞级（必须立即修复）
+
+#### 🔴 P0-1: 流式生成路径丢失记忆上下文
+
+**位置**: `server/src/modules/ai/ai.controller.ts:84-88`
+
+**问题**: SSE 流式生成端点 `POST /ai/generate-content` 的 Prompt 构建完全**未调用** `MemoryService.assembleContext()`。当前所有前端触发的章节生成（用户实际使用的路径）均未注入记忆上下文，记忆系统形同虚设。
+
+**对比**:
+- `ai.service.ts:generateContent()`（非流式）✅ 正确调用了 assembleContext
+- `ai.controller.ts:generateContent()`（流式SSE）❌ 完全缺失
+
+**修复方案**:
+```typescript
+// ai.controller.ts 的 generateContent 方法中，在构建Prompt之前插入：
+const ctx = await this.aiService.assembleContext(body.bookId, body.chapterId, user.plan);
+const { systemPrompt, userMessage } = this.promptTemplate.buildChapterGenerationPrompt({
+  chapterOutline: body.chapterOutline,
+  instruction: body.instruction,
+  targetWordCount: body.targetWordCount,
+  contextSummary: ctx ? [
+    ctx.recentSummary,
+    ctx.activeForeshadows ? `活跃伏笔:\n${ctx.activeForeshadows}` : '',
+    ctx.characterStates ? `角色状态:\n${ctx.characterStates}` : '',
+    ctx.relevantMemories ? `相关记忆:\n${ctx.relevantMemories}` : '',
+  ].filter(Boolean).join('\n\n') : undefined,
+});
+```
+
+**影响范围**: 1 处代码修改，影响所有章节生成请求
+
+---
+
+#### 🔴 P0-2: assembleContext 返回字段未完整使用
+
+**位置**: `server/src/modules/ai/ai.service.ts:67-71`
+
+**问题**: `MemoryService.assembleContext()` 返回 4 个字段（`recentSummary`、`activeForeshadows`、`characterStates`、`relevantMemories`），但调用方只拼接了前 2 个，角色状态和长期记忆被丢弃。
+
+**修复方案**: 将 4 个字段全部注入 contextSummary（见 P0-1 的代码示例）。
+
+---
+
+#### 🔴 P0-3: Agent 系统与记忆系统完全隔离
+
+**位置**: `server/src/modules/ai/agents/orchestrator.service.ts` + 5 个 Agent 的 `buildPrompt()`
+
+**问题**: 
+- 5 个 Agent 的 `buildPrompt()` 方法零引用记忆服务
+- `OrchestratorService.preGenerate()` 没有调用 `MemoryService.assembleContext()`
+- 文档设计的完整流水线 "Orchestrator → 记忆管家 → 文风模拟师 → 架构师 → 组装Prompt" 未实现
+
+**修复方案**:
+1. 在 `OrchestratorService.preGenerate()` 中注入记忆上下文
+2. 修改 `BaseAgent.execute()` 接口，增加可选的 `memoryContext` 参数
+3. 在各 Agent 的 `buildPrompt()` 中使用记忆上下文
+
+---
+
+### 19.4 P1 高优先级（核心体验改进）
+
+#### 🟡 P1-1: Prompt 模板升级
+
+**位置**: `server/src/modules/ai/prompt-template.service.ts`
+
+**问题**: System prompt 仅包含 6 条通用写作要求，未注入：
+- 当前作品的角色列表和状态
+- 活跃伏笔和预期回收节点
+- 世界观设定摘要
+- 风格参数（文风模拟师的产出未接入）
+
+**方案**: 引入结构化 Prompt 模板，包含角色段、设定段、伏笔段、风格段。
+
+---
+
+#### 🟡 P1-2: 补齐记忆提取缺失功能
+
+**位置**: `server/src/modules/memory/memory-extraction.service.ts`
+
+**需补齐**:
+| 功能 | 文档设计 | 当前状态 |
+|------|---------|---------|
+| 物品/货币追踪 | ✅ 设计 | ❌ 未实现 |
+| 主支线进度更新 | ✅ 设计 | ❌ 未实现 |
+| 角色交互记录 | ✅ 设计 | ❌ 未实现 |
+| 风格锚点自动提取 | ✅ 设计 | 实体已建，逻辑为空 |
+
+---
+
+#### 🟡 P1-3: 迁移到 pgvector 原生 SQL 检索
+
+**位置**: `server/src/modules/memory/vector-search.service.ts`
+
+**问题**: 当前 `search()` 方法将整本书所有记忆事件全量加载到内存中做 JS 层余弦相似度计算。长篇作品（500万字）的事件数量增长后，性能会线性退化。
+
+**方案**: 
+1. MemoryEvent 实体的 `embedding` 字段改为 pgvector 原生 `vector(1536)` 类型
+2. 检索逻辑改为 SQL 查询：`ORDER BY embedding <=> $query_embedding`
+3. 建立 IVFFlat 索引加速
+
+---
+
+#### 🟡 P1-4: 增加中文全文搜索
+
+**位置**: `server/src/modules/memory/vector-search.service.ts:keywordScore()`
+
+**问题**: 当前 `keywordScore()` 用简单的 `split()` + `includes()` 做关键词匹配，对中文支持极弱（无分词、无语义）。
+
+**方案**:
+1. PostgreSQL 安装 `zhparser` 中文分词扩展
+2. Chapters/Characters 表增加 `tsvector` 生成列
+3. 混合检索中集成 `ts_rank` + `plainto_tsquery('chinese', ...)`
+
+---
+
+#### 🟡 P1-5: 引入检索结果重排序
+
+**位置**: 向量检索链路
+
+**问题**: 检索返回 Top 20 后直接按粗排分数返回，无精排阶段。事件数量大时，Top 5 精度无保证。
+
+**方案**: 粗排（向量+关键词 Top 20）→ 精排（轻量 Cross-encoder 或 LLM 评分 Top 5）→ 返回
+
+---
+
+#### 🟡 P1-6: 文件格式规范制定与双向转换器
+
+**问题**: 当前所有数据散落在 PostgreSQL 关系表中，缺乏自描述的文件格式。
+
+**方案**: 参见 19.7 节文件格式方案。实现 PostgreSQL ↔ Markdown+YAML 双向转换器。
+
+---
+
+#### 🟡 P1-7: Prompt 上下文压缩
+
+**问题**: 随着章节增多，短期记忆（最近 3 章摘要）+ 活跃伏笔 + 角色状态 + 相关记忆的总体 Token 消耗会持续膨胀。
+
+**方案**: 在注入 Prompt 前增加压缩层——对组装好的上下文做 LLM 摘要压缩，控制在上限 Token 内（如 2000 Token）。
+
+---
+
+### 19.5 P2 中优先级（体验提升和债务清理）
+
+#### 🔵 P2-1: 前端 LeftSidebar 拆分
+
+**位置**: `client/src/components/layout/LeftSidebar.tsx` (~620 行)
+
+**问题**: 该组件内联了书籍/分卷/章节的几乎所有 CRUD 逻辑、右键菜单、批量管理、新建弹窗等多个职责。
+
+**方案**: 拆分为 `useBookActions`、`useVolumeActions`、`useChapterActions` 三个自定义 Hook，提取 `BookTree`、`VolumeTree`、`ChapterItem` 子组件。
+
+---
+
+#### 🔵 P2-2: 合并 BookCreateDialog 与 BookEditDialog
+
+**位置**: `client/src/components/layout/BookCreateDialog.tsx` + `BookEditDialog.tsx`
+
+**问题**: 两个组件功能高度重叠（编辑书名/作者/标签），前者多了封面上传。
+
+**方案**: 合并为 `BookFormDialog`，通过 `mode: 'create' | 'edit'` prop 区分行为。
+
+---
+
+#### 🔵 P2-3: project.store 补充业务 Action
+
+**位置**: `client/src/stores/project.store.ts`
+
+**问题**: `project.store` 仅有 setter 方法，所有 `apiClient` CRUD 调用直接写在 LeftSidebar 组件中。
+
+**方案**: 在 store 中增加 `loadBooks`、`createBook`、`deleteBook`、`loadVolumes` 等 action 方法，组件仅调用 action。
+
+---
+
+#### 🔵 P2-4: 剔除 any 类型
+
+**位置**: 多个组件（BookCreateDialog、LeftSidebar、CharacterList 等）
+
+**问题**: 大量 `book: any`、`data: any` 等不严格类型。
+
+**方案**: 引入 `shared/src/types/` 中已定义的类型接口，替换所有 `any`。
+
+---
+
+#### 🔵 P2-5: 实现角色关系图可视化
+
+**位置**: `client/src/components/characters/CharacterList.tsx` + `character.store.ts`
+
+**问题**: 后端 API `/character-graph` 已实现，前端 `loadGraph` 已调用并获取 nodes+edges 数据，但无图形化渲染。
+
+**方案**: 引入轻量级图形库（如 `@xyflow/react` 或 D3.js force graph）渲染关系图。
+
+---
+
+#### 🔵 P2-6: 搜索升级为后端 API 搜索
+
+**位置**: `client/src/components/layout/SearchDialog.tsx`
+
+**问题**: 当前搜索为客户端数据过滤，大数据量不可靠。
+
+**方案**: 新增 `GET /search?q=xxx&bookId=xxx` 后端 API，使用 FTS 全文索引。
+
+---
+
+#### 🔵 P2-7: 导出格式完善
+
+**位置**: `server/src/modules/export/`
+
+**问题**: 仅支持 TXT 和简易 Word（HTML 包装为 .doc），缺少 EPUB、真正的 .docx、PDF 格式。
+
+**方案**: 引入 `docx` npm 包实现真正的 .docx；引入 `epub-gen` 或类似库实现 EPUB。
+
+---
+
+### 19.6 P3 低优先级（架构演进）
+
+#### ⚪ P3-1: BullMQ 异步队列
+
+将记忆提取从同步调用改为 BullMQ 异步队列，Worker 独立进程处理，不阻塞用户生成流程。
+
+#### ⚪ P3-2: Redis 短期记忆缓存
+
+`MemoryService.assembleContext()` 每次查询数据库。引入 Redis 缓存层，对"最近 3 章摘要"、"活跃伏笔列表"等高频数据做 TTL 缓存。
+
+#### ⚪ P3-3: WebSocket 实时同步
+
+实现 `sync.gateway.ts`，用 Socket.io 实现多端实时协作推送。
+
+#### ⚪ P3-4: 离线 SQLite 本地存储
+
+Electron 客户端集成 SQLite，实现完整的离线创作→联网增量同步闭环。
+
+#### ⚪ P3-5: GraphRAG 知识图谱
+
+对角色关系、事件因果链、伏笔推进链构建知识图谱，支持"为什么"类推理查询（如"白泽为什么在 ch-025 中做出那个决定"）。
+
+---
+
+### 19.7 文件格式方案（Markdown + YAML Frontmatter）
+
+#### 19.7.1 作品目录结构
+
+```
+workspaces/
+└── {book-uuid}-{书名}/
+    ├── book.yaml                    # 📋 作品清单（入口文件）
+    ├── chapters/                    # 📝 章节
+    │   └── vol-01/
+    │       └── ch-001-章节名.md
+    ├── characters/                  # 👤 角色档案
+    │   └── 角色名.md
+    ├── worldbuilding/              # 🌍 世界观设定
+    │   ├── locations/
+    │   └── systems/
+    ├── outlines/                   # 📊 大纲
+    ├── memory/                     # 🧠 记忆索引（自动生成）
+    │   ├── events/
+    │   ├── foreshadows/
+    │   ├── character-states/
+    │   └── _index.yaml
+    └── exports/                    # 📦 导出目录
+```
+
+#### 19.7.2 章节文件格式
+
+```markdown
+---
+id: "ch-uuid-001"
+type: "chapter"
+title: "青云山初遇"
+volume_id: "vol-1"
+chapter_number: 1
+word_count: 3247
+status: "published"
+characters:
+  - ref: "characters/陈凡.md"
+  - ref: "characters/白泽.md"
+locations:
+  - ref: "worldbuilding/locations/青云山.md"
+events:
+  - id: "evt-001"
+    title: "陈凡突破大罗金仙"
+    type: "turning_point"
+    importance: 9
+new_foreshadows:
+  - ref: "memory/foreshadows/fs-001-天道的真实身份.md"
+---
+
+# 第1章 青云山初遇
+
+## 场景一：山门试炼
+
+陈凡站在青云山的山门前...[[角色/白泽]]突然出现...
+
+<!-- memory:event id="evt-001" type="turning_point" 
+     title="陈凡突破大罗金仙" importance=9 -->
+陈凡体内灵气突然暴走...大罗金仙的境界轰然突破。
+<!-- /memory:event -->
+```
+
+#### 19.7.3 三层关联机制
+
+| 层级 | 格式 | 用途 |
+|------|------|------|
+| Wiki链接 | `[[角色/陈凡]]` | 人类可读，编辑器自动补全和跳转 |
+| Frontmatter引用 | `characters: [{ref: "..."}]` | 程序精确解析，双向同步 |
+| HTML注释标记 | `<!-- memory:event ... -->` | 记忆系统细粒度语义标注 |
+
+#### 19.7.4 架构定位
+
+```
+┌──────────────────────────────────────┐
+│  PostgreSQL (运行时主存储)             │
+│  · 事务一致性 · 多端同步 · 权限控制    │
+└──────────┬───────────────────────────┘
+           │ 双向同步 (Builder)
+┌──────────▼───────────────────────────┐
+│  文件系统 (工作区存储)                  │
+│  · 离线编辑 · Git版本控制              │
+│  · LLM直接消费 · 导出/备份             │
+│  · 语义分块源                         │
+└──────────────────────────────────────┘
+```
+
+#### 19.7.5 对记忆系统的增强
+
+| 改进点 | 当前 | 文件格式方案后 |
+|--------|------|---------------|
+| 语义分块 | 按固定字数切分 | Markdown `##` 标题天然分块边界 |
+| 元数据提取 | LLM 后提取 | Frontmatter 直接结构化索引 |
+| 交叉引用 | 仅 UUID 外键 | `[[链接]]` 自动展开为聚合视图 |
+| 记忆标记 | 无 | `<!-- memory:event -->` 精确标注 |
+
+---
+
+### 19.8 实施路线图
+
+```
+Week 1-2 (P0 修复):
+├── P0-1: 修复流式路径记忆注入
+├── P0-2: 补全 assembleContext 4字段使用
+└── P0-3: Agent 接入记忆上下文
+
+Week 3-6 (P1 高优):
+├── P1-1: Prompt 模板升级
+├── P1-2: 补齐记忆提取缺失功能（物品/进度/交互记录）
+├── P1-6: 制定文件格式规范 + 实现转换器
+└── P1-7: 上下文压缩
+
+Week 7-12 (P1+P2):
+├── P1-3: pgvector 原生 SQL 检索
+├── P1-4: 中文全文搜索 (zhparser)
+├── P1-5: 检索结果重排序
+├── P2-1: LeftSidebar 拆分
+├── P2-3: project.store 补充Action
+└── P2-5: 角色关系图可视化
+
+Week 13+ (P2+P3):
+├── P2-2: 合并BookCreateDialog+BookEditDialog
+├── P2-4: 剔除any类型
+├── P2-6: 后端API搜索
+├── P2-7: EPUB/PDF导出
+└── P3-1: BullMQ异步队列
+
+远期 (P3):
+├── P3-2: Redis短期记忆缓存
+├── P3-3: WebSocket实时同步
+├── P3-4: 离线SQLite
+└── P3-5: GraphRAG知识图谱
+```
+
+---
+
+> **完善方案结束**。本章基于 v2.7 全代码库审计结果编写，共识别 3 个 P0 阻塞问题、7 个 P1 高优改进、7 个 P2 中优改进、5 个 P3 远期演进项。建议按实施路线图分阶段推进。

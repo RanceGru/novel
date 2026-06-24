@@ -12,6 +12,7 @@ import { TokenTransaction } from '../token/entities/token-transaction.entity';
 import { BookService } from '../project/book.service';
 import { MemoryService } from '../memory/memory.service';
 import { MemoryExtractionService } from '../memory/memory-extraction.service';
+import { ContextCompressorService } from './context-compressor.service';
 import { SUBSCRIPTION_PLANS } from '@novel/shared';
 
 @Injectable()
@@ -28,15 +29,35 @@ export class AiService {
     private bookService: BookService,
     private memoryService: MemoryService,
     private memoryExtraction: MemoryExtractionService,
+    private contextCompressor: ContextCompressorService,
   ) {}
 
-  /** 为生成组装完整上下文（含记忆） */
+  /** 为生成组装完整上下文（含记忆 + 自动压缩） */
   async assembleContext(bookId: string, chapterId: string, userPlan: string) {
     const planTier = SUBSCRIPTION_PLANS[userPlan]?.tier || 'free';
     // Basic+ 套餐启用记忆上下文
     if (['basic', 'plus', 'pro'].includes(planTier)) {
       try {
-        return this.memoryService.assembleContext(bookId, chapterId);
+        const ctx = await this.memoryService.assembleContext(bookId, chapterId);
+        if (!ctx) return null;
+
+        // 自动压缩过长的上下文
+        const totalChars = (ctx.recentSummary?.length || 0) +
+          (ctx.activeForeshadows?.length || 0) +
+          (ctx.characterStates?.length || 0) +
+          (ctx.relevantMemories?.length || 0);
+
+        if (totalChars > 3000) { // 超过 ~2000 tokens 时触发压缩
+          const compressed = await this.contextCompressor.compress(ctx);
+          return {
+            recentSummary: compressed.recentSummary,
+            activeForeshadows: compressed.activeForeshadows,
+            characterStates: compressed.characterStates,
+            relevantMemories: compressed.relevantMemories,
+          };
+        }
+
+        return ctx;
       } catch (e: any) {
         this.logger.warn('记忆上下文组装失败: ' + e.message);
       }
@@ -66,8 +87,14 @@ export class AiService {
     let contextSummary = '';
     try {
       const ctx = await this.memoryService.assembleContext(params.bookId, params.chapterId);
-      if (ctx.recentSummary) contextSummary += ctx.recentSummary;
-      if (ctx.activeForeshadows) contextSummary += '\n活跃伏笔:\n' + ctx.activeForeshadows;
+      if (ctx) {
+        contextSummary = [
+          ctx.recentSummary ? `## 前文摘要\n${ctx.recentSummary}` : '',
+          ctx.activeForeshadows ? `## 活跃伏笔\n${ctx.activeForeshadows}` : '',
+          ctx.characterStates ? `## 角色状态\n${ctx.characterStates}` : '',
+          ctx.relevantMemories ? `## 相关记忆\n${ctx.relevantMemories}` : '',
+        ].filter(Boolean).join('\n\n');
+      }
     } catch {}
 
     const { systemPrompt, userMessage } = this.promptTemplate.buildChapterGenerationPrompt({

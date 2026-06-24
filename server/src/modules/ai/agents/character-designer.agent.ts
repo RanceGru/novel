@@ -1,5 +1,5 @@
 // 人设师 Agent — AI角色创建
-import { BaseAgent } from './base.agent';
+import { BaseAgent, MemoryContext } from './base.agent';
 import { ModelRouterService } from '../model-router.service';
 
 export class CharacterDesignerAgent extends BaseAgent {
@@ -9,7 +9,7 @@ export class CharacterDesignerAgent extends BaseAgent {
 
   constructor(modelRouter: ModelRouterService) { super(modelRouter); }
 
-  buildPrompt(input: any) {
+  buildPrompt(input: any, memoryContext?: MemoryContext) {
     return {
       system: `你是专业小说人设师。根据世界观设定和故事需求，设计立体、有深度的角色。
 

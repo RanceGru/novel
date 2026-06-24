@@ -1,5 +1,5 @@
 // 世界构建师 Agent — 世界观设定生成
-import { BaseAgent } from './base.agent';
+import { BaseAgent, MemoryContext } from './base.agent';
 import { ModelRouterService } from '../model-router.service';
 
 export class WorldBuilderAgent extends BaseAgent {
@@ -9,7 +9,7 @@ export class WorldBuilderAgent extends BaseAgent {
 
   constructor(modelRouter: ModelRouterService) { super(modelRouter); }
 
-  buildPrompt(input: any) {
+  buildPrompt(input: any, memoryContext?: MemoryContext) {
     return {
       system: `你是专业世界观设计师，擅长构建严谨、有趣的虚构世界。
 

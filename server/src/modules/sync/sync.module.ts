@@ -4,6 +4,7 @@ import { OperationLog } from './entities/operation-log.entity';
 import { SyncService } from './sync.service';
 import { SyncController } from './sync.controller';
 import { ConflictResolverService } from './conflict-resolver.service';
+import { SyncGateway } from './sync.gateway';
 import { Book } from '../project/entities/book.entity';
 import { Volume } from '../project/entities/volume.entity';
 import { Chapter } from '../project/entities/chapter.entity';
@@ -16,7 +17,7 @@ import { WorldSetting } from '../worldbuilding/entities/world-setting.entity';
     OperationLog, Book, Volume, Chapter, Outline, Character, WorldSetting,
   ])],
   controllers: [SyncController],
-  providers: [SyncService, ConflictResolverService],
-  exports: [SyncService],
+  providers: [SyncService, ConflictResolverService, SyncGateway],
+  exports: [SyncService, SyncGateway],
 })
 export class SyncModule {}

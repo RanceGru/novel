@@ -15,6 +15,14 @@ export interface AgentResult<T = any> {
   };
 }
 
+/** 记忆上下文（由记忆管家组装） */
+export interface MemoryContext {
+  recentSummary?: string;
+  activeForeshadows?: string;
+  characterStates?: string;
+  relevantMemories?: string;
+}
+
 export abstract class BaseAgent {
   protected readonly logger: Logger;
   abstract readonly name: string;
@@ -36,7 +44,7 @@ export abstract class BaseAgent {
   }
 
   /** 执行 Agent 任务 */
-  async execute<T = any>(userPlan: string, input: any): Promise<AgentResult<T>> {
+  async execute<T = any>(userPlan: string, input: any, memoryContext?: MemoryContext): Promise<AgentResult<T>> {
     const startTime = Date.now();
 
     if (!this.canExecute(userPlan)) {
@@ -49,7 +57,7 @@ export abstract class BaseAgent {
 
     try {
       const route = this.modelRouter.routeByTier(userPlan);
-      const prompt = this.buildPrompt(input);
+      const prompt = this.buildPrompt(input, memoryContext);
       const result = await this.callLLM(route.apiKey, route.baseUrl, route.model, prompt);
       const parsed = this.parseResult(result.content);
       return {
@@ -66,7 +74,7 @@ export abstract class BaseAgent {
   }
 
   /** 子类实现：构建 Prompt */
-  abstract buildPrompt(input: any): { system: string; user: string };
+  abstract buildPrompt(input: any, memoryContext?: MemoryContext): { system: string; user: string };
 
   /** 子类实现：解析结果 */
   abstract parseResult(content: string): any;

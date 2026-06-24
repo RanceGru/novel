@@ -17,6 +17,8 @@ import { MemoryExtractionService } from './memory-extraction.service';
 import { EmbeddingService } from './embedding.service';
 import { VectorSearchService } from './vector-search.service';
 import { ConflictDetectorService } from './conflict-detector.service';
+import { GraphRAGService } from './graph-rag.service';
+import { MemoryQueueService } from './memory-queue.service';
 
 @Module({
   imports: [
@@ -33,7 +35,9 @@ import { ConflictDetectorService } from './conflict-detector.service';
     EmbeddingService,
     VectorSearchService,
     ConflictDetectorService,
+    GraphRAGService,
+    MemoryQueueService,
   ],
-  exports: [MemoryService, MemoryExtractionService, EmbeddingService],
+  exports: [MemoryService, MemoryExtractionService, EmbeddingService, GraphRAGService, MemoryQueueService],
 })
 export class MemoryModule {}

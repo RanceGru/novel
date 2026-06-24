@@ -4,6 +4,7 @@ import { AiController } from './ai.controller';
 import { AiService } from './ai.service';
 import { StreamingService } from './streaming.service';
 import { PromptTemplateService } from './prompt-template.service';
+import { ContextCompressorService } from './context-compressor.service';
 import { ModelRouterService } from './model-router.service';
 import { Chapter } from '../project/entities/chapter.entity';
 import { Book } from '../project/entities/book.entity';
@@ -21,7 +22,7 @@ import { AgentsModule } from './agents/agents.module';
   ],
   controllers: [AiController],
   providers: [
-    AiService, StreamingService, PromptTemplateService, ModelRouterService, BookService,
+    AiService, StreamingService, PromptTemplateService, ContextCompressorService, ModelRouterService, BookService,
   ],
   exports: [AiService],
 })

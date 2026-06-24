@@ -14,7 +14,7 @@ interface Props {
   editBook?: any;
 }
 
-export default function BookCreateDialog({ open, onClose, onCreated, bookCount, existingTitles, editBook }: Props) {
+export default function BookFormDialog({ open, onClose, onCreated, bookCount, existingTitles, editBook }: Props) {
   const user = useAuthStore((s) => s.user);
   const isEdit = !!editBook;
   const [title, setTitle] = useState('');

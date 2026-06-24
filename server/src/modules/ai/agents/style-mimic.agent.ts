@@ -1,5 +1,5 @@
 // 文风模拟师 Agent — 分析文风参数
-import { BaseAgent } from './base.agent';
+import { BaseAgent, MemoryContext } from './base.agent';
 import { ModelRouterService } from '../model-router.service';
 
 export class StyleMimicAgent extends BaseAgent {
@@ -9,7 +9,7 @@ export class StyleMimicAgent extends BaseAgent {
 
   constructor(modelRouter: ModelRouterService) { super(modelRouter); }
 
-  buildPrompt(input: any) {
+  buildPrompt(input: any, memoryContext?: MemoryContext) {
     return {
       system: `你是专业文风分析师。请分析提供的文本样本，提取以下风格参数：
 

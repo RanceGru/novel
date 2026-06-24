@@ -80,11 +80,20 @@ export class AiController {
         return;
       }
 
+      // 获取记忆上下文（修复：流式路径原先缺失此步骤，导致记忆系统形同虚设）
+      const ctx = await this.aiService.assembleContext(body.bookId, body.chapterId, user.plan);
+
       // 构建 Prompt
       const { systemPrompt, userMessage } = this.promptTemplate.buildChapterGenerationPrompt({
         chapterOutline: body.chapterOutline,
         instruction: body.instruction,
         targetWordCount: body.targetWordCount,
+        contextSummary: ctx ? [
+          ctx.recentSummary ? `## 前文摘要\n${ctx.recentSummary}` : '',
+          ctx.activeForeshadows ? `## 活跃伏笔\n${ctx.activeForeshadows}` : '',
+          ctx.characterStates ? `## 角色状态\n${ctx.characterStates}` : '',
+          ctx.relevantMemories ? `## 相关记忆\n${ctx.relevantMemories}` : '',
+        ].filter(Boolean).join('\n\n') : undefined,
       });
 
       // 路由
