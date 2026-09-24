@@ -1,7 +1,7 @@
 # AI智能小说生成助手 — 技术规格文档
 
-> **版本**: v2.7
-> **最后更新**: 2026-06-24 (代码审计 + 记忆系统评估 + 完善方案)
+> **版本**: v2.8
+> **最后更新**: 2026-07-01 (纲树-章节同步系统设计 + 数据模型扩展)
 > **目标**: 实现一款支持500万字级网文创作的跨平台（Windows / macOS）桌面AI写作助手
 > **设计参考**: Codex 桌面端风格
 > **数据架构**: 云端优先（Cloud-First），所有数据默认存储于云端服务器，Lite及以上套餐可下载到本地
@@ -16,6 +16,7 @@
 3. [用户与订阅系统](#3-用户与订阅系统)
 4. [界面设计](#4-界面设计)
 5. [功能规格](#5-功能规格)
+   - [5.4 纲树-章节同步系统](#54-纲树-章节同步系统-v28)
 6. [数据模型](#6-数据模型)
 7. [AI系统设计](#7-ai系统设计) — 含API用量管理层、多Provider路由、成本控制
 8. [记忆系统](#8-记忆系统)
@@ -1717,6 +1718,183 @@ AI去味强度设置:
 
 ---
 
+### 5.4 纲树-章节同步系统 (v2.8)
+
+#### 5.4.1 设计理念
+
+纲树（大纲规划）和章节（正文内容）是两套独立系统，通过**单向依赖 + 快照机制**关联：
+
+```
+纲树 ──(生成时快照)──→ 章节
+章节 ←──(可选关联)─── 纲树节点
+```
+
+- **纲树是规划工具**：大纲→卷纲→章纲，树形结构，自由修改
+- **目录是交付产物**：分卷→章节，线性结构，读者所见
+- **两者独立演进**：修改纲树不自动覆盖章节，修改章节不自动回填纲树
+- **系统只做提醒**：追踪版本差异，提示"过时"或"偏离"，同步动作由作者手动触发
+
+#### 5.4.2 两套系统的定位
+
+```
+📘 作品
+│
+├── 📑 目录                    ← 作品的「躯体」
+│   ├── 分卷一                   ← volumes 表
+│   │   ├── 第一章               ← chapters 表
+│   │   └── 第二章
+│   ├── 分卷二
+│   └── 分卷外章节               ← 草稿/游离章节
+│
+└── 📋 相关                    ← 作品的「灵魂」
+    ├── 纲树                     ← outlines 表（独立大纲规划）
+    ├── 角色                     ← characters 表
+    └── 世界观                   ← world_settings 表
+```
+
+| | 目录 | 相关→纲树 |
+|------|:--|:--|
+| 数据来源 | `volumes` / `chapters` 表 | `outlines` 表 |
+| 结构 | 线性（分卷→章节） | 树形（大纲→卷纲→章纲） |
+| 用途 | 最终交付内容 | 创作规划草稿 |
+| 修改频率 | 生成后相对稳定 | 规划阶段频繁调整 |
+
+#### 5.4.3 同步状态定义
+
+**纲树侧 (`outlines.sync_status`)**：
+
+| 状态 | 含义 |
+|------|------|
+| `synced` | 纲树与关联章节一致 |
+| `outline_changed` | 纲树已更新，章节内容可能过时 |
+| `chapter_changed` | 章节内容已偏离纲树 |
+| `diverged` | 双向分歧，两者都已各自修改 |
+
+**章节侧 (`chapters.outline_sync`)**：
+
+| 状态 | 含义 |
+|------|------|
+| `synced` | 内容与纲树一致 |
+| `stale` | 纲树已更新（对应 outline_changed） |
+| `diverged` | 两者已分歧 |
+| `detached` | 手动解绑，不再追踪 |
+
+#### 5.4.4 状态流转规则
+
+```
+              创建/生成
+   ┌──────→  synced  ←──────────────┐
+   │          │   │                  │
+   │          │   │                  │
+   │   修改纲树   │  修改章节内容      │
+   │          │   │                  │
+   │          ↓   ↓                  │
+   │   outline_changed  (纲树侧)     │
+   │   stale            (章节侧)     │
+   │          │   │                  │
+   │          │   │                  │
+   │  双方都改    │  作者手动同步     │
+   │          │   │  (接受纲树重写)   │
+   │          ↓   └──────────────┘   │
+   │   diverged                      │
+   │          │                      │
+   │          ↓                      │
+   │   作者手动解绑                    │
+   └── detached ←───────────────────┘
+```
+
+**触发规则**：
+
+| 操作 | 触发条件 | 纲树侧 | 章节侧 |
+|------|---------|:--|:--|
+| 基于纲树生成章节 | AI 生成成功 | `synced` (版本+1) | `synced` (记录快照) |
+| 修改纲树 content | PATCH `/outlines/:id` | `outline_changed` | `stale` |
+| 手动编辑章节正文 | 检测到 content 变化 | 检测后变 `chapter_changed` | 检测后变 `diverged` |
+| 两者都改过 | 按上述规则叠加 | `diverged` | `diverged` |
+| 作者手动解绑 | POST `/chapters/:id/detach-outline` | `synced` | `detached` |
+| 基于新纲树重写 | POST `/outlines/:id/apply` | `synced` (版本+1) | `synced` (更新快照) |
+
+#### 5.4.5 核心交互场景
+
+**场景一：修改纲树 → 已生成章节**
+
+```
+修改前：
+  章纲节点 A "主角修炼成功" ──生成──→ 第3章（内容按 A 生成，outlineSync = synced）
+
+修改后：
+  章纲节点 A' "主角修炼失败，转为魔道"  ← sync_status → outline_changed
+  第3章                                   ← outlineSync → stale
+
+UI 表现：
+  纲树节点旁显示 🟡 + "纲已更新"
+  第3章旁显示 🟡 + "纲树已过时（v1→v2），点击查看差异"
+  作者可选择：[忽略] [查看差异] [接受纲树重写]
+```
+
+**场景二：修改章节 → 纲树**
+
+```
+修改前：
+  章纲节点 A "主角修炼成功" ──关联──→ 第3章（outlineSync = synced）
+
+修改后：
+  第3章（作者手动改成"主角修炼失败"）  ← outlineSync → diverged
+  章纲节点 A 不变                        ← sync_status → chapter_changed
+
+UI 表现：
+  章节旁显示 🟠 + "已偏离纲树"
+  纲树节点旁显示 🟠 + "章节已偏离"
+  作者可选择：[查看差异] [忽略] [用正文覆盖纲树]
+```
+
+**场景三：纲树删除 → 关联章节**
+
+```
+  纲树节点被删除 → 章节的 outline_node_id 自动 SET NULL（外键 ON DELETE SET NULL）
+  章节的 outlineSync → detached
+  章节内容不受影响，只是不再追踪纲树关系
+```
+
+#### 5.4.6 前后端接口设计
+
+**纲树节点 ↔ 章节关联数据**：
+
+```typescript
+// outlines.linked_chapters — JSONB 结构
+interface LinkedChapter {
+  chapterId: string;
+  chapterTitle: string;
+  generatedAt: string;       // 生成时间
+  outlineVersion: number;    // 生成时纲树 contentVersion
+  outlineSnapshot: string;   // 生成时纲树内容快照（纯文本摘要，用于差异对比）
+}
+```
+
+**差异对比 API 响应**：
+
+```typescript
+// GET /chapters/:id/outline-diff 响应
+interface OutlineDiffResponse {
+  chapterId: string;
+  outlineNodeId: string;
+  syncStatus: string;
+  currentOutline: {
+    content: string;
+    version: number;
+    updatedAt: string;
+  };
+  snapshotOutline: {
+    content: string;
+    version: number;
+    generatedAt: string;
+  };
+  highlights: DiffSegment[];  // 差异高亮区域
+}
+```
+
+---
+
 ## 6. 数据模型
 
 ### 6.1 云端数据库设计（PostgreSQL）
@@ -1911,10 +2089,18 @@ CREATE TABLE chapters (
   word_count INTEGER DEFAULT 0,
   status VARCHAR(20) DEFAULT 'draft',
   sync_version BIGINT DEFAULT 1,
+
+  -- 纲树关联字段 (v2.8)
+  outline_node_id UUID REFERENCES outlines(id) ON DELETE SET NULL,  -- 来源纲树节点
+  outline_version INTEGER DEFAULT 0,          -- 生成时纲树 contentVersion
+  outline_snapshot TEXT,                       -- 生成时纲树内容快照（JSON摘要）
+  outline_sync VARCHAR(20) DEFAULT 'detached', -- synced/stale/diverged/detached
+
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX idx_chapters_volume ON chapters(volume_id);
+CREATE INDEX idx_chapters_outline_node ON chapters(outline_node_id);
 
 -- 云端版本管理（完整历史快照，纯服务端存储）
 -- 每次 AI 生成完成、用户保存、去味审查后自动创建版本快照
@@ -1960,7 +2146,7 @@ CREATE TABLE world_settings (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 大纲
+-- 大纲 / 纲树 (v2.8 扩展同步字段)
 CREATE TABLE outlines (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   book_id UUID NOT NULL REFERENCES books(id) ON DELETE CASCADE,
@@ -1972,6 +2158,12 @@ CREATE TABLE outlines (
   parent_id UUID REFERENCES outlines(id),
   sort_order INTEGER DEFAULT 0,
   sync_version BIGINT DEFAULT 1,
+
+  -- 纲树-章节同步字段 (v2.8)
+  linked_chapters JSONB DEFAULT '[]',            -- 关联章节列表: [{chapterId, chapterTitle, generatedAt, outlineVersion, outlineSnapshot}]
+  sync_status VARCHAR(20) DEFAULT 'synced',      -- synced/outline_changed/chapter_changed/diverged
+  content_version INTEGER DEFAULT 1,             -- 内容版本号，每次修改纲树+1
+
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -2947,6 +3139,13 @@ Token相关:
   POST   /books/:bookId/outlines
   PATCH  /outlines/:id
   DELETE /outlines/:id
+  GET    /books/:bookId/outlines/sync-status    — 纲树整体同步状态 (v2.8)
+  POST   /books/:bookId/outlines/:id/apply      — 将纲树应用到章节 (v2.8)
+
+纲树-章节同步相关 (v2.8):
+  GET    /chapters/:id/outline-diff             — 查看章节与纲树差异
+  POST   /chapters/:id/detach-outline           — 断开纲树关联
+  POST   /chapters/:id/sync-from-outline        — 从纲树同步重写
 
 角色相关:
   GET    /books/:bookId/characters
@@ -3157,7 +3356,7 @@ AI生成:
 
 ### Phase 6: 高级功能与体验优化 — 预计 8-12 周 ⚠️ **部分完成**
 
-> **v2.7 审计确认**: Token购买UI、主题切换已完成；全局搜索为客户端过滤而非FTS；通知系统未实现。
+> **v2.8 审计确认**: Token购买UI、主题切换已完成；全局搜索为客户端过滤而非FTS；通知系统未实现。纲树-章节同步系统已设计，待实现。
 
 | 编号 | 任务 | 状态 | 说明 |
 |------|------|------|------|
@@ -3170,6 +3369,7 @@ AI生成:
 | P6.7 | 快捷键系统 | ⚠️ | 编辑器基础快捷键已实现 |
 | P6.8 | 深色/浅色主题 | ✅ | 亮/暗/跟随系统三模式 |
 | P6.9 | 通知系统（WebSocket推送 + 邮件） | ❌ | 未实现 |
+| P6.10 | 纲树-章节同步系统 | 🔧 | 数据模型+API+UI设计完成，待落地 (v2.8) |
 | P6.10 | 自动更新（客户端） | ❌ | Electron外壳未集成 |
 
 ### Phase 7: 打磨与发布 — 预计 6-8 周 🔧 **未开始**
