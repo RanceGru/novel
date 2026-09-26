@@ -1,0 +1,45 @@
+# 换行与文件类型规范化
+# 策略：仓库内统一存 LF；检出到工作区时由 git 按平台决定（Windows 为 CRLF）。
+# 这里不写死 eol=lf，以免强制改变 Windows 上已有文件的换行风格。
+
+# 默认：由 git 自动判定文本/二进制，文本统一存为 LF
+* text=auto
+
+# 明确的文本类型（便于 diff 与合并）
+*.ts    text
+*.tsx   text
+*.js    text
+*.json  text
+*.css   text
+*.html  text
+*.md    text
+*.sql   text
+*.yml   text
+*.yaml  text
+*.txt   text
+
+# 无扩展名的配置文件
+.gitignore     text
+.gitattributes text
+.npmrc         text
+.env.example   text
+
+# Windows 批处理脚本必须保留 CRLF，否则无法执行
+*.cmd   text eol=crlf
+*.bat   text eol=crlf
+
+# 二进制文件：禁止换行转换与文本差异
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.webp  binary
+*.ico   binary
+*.docx  binary
+*.xlsx  binary
+*.pdf   binary
+*.sqlite  binary
+*.sqlite3 binary
+
+# pnpm 锁文件：合并时整体取一侧更可靠，避免冲突噪音
+pnpm-lock.yaml merge=binary
