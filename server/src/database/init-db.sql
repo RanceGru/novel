@@ -1,0 +1,7 @@
+-- 初始化数据库扩展
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- 中文全文搜索配置
+CREATE TEXT SEARCH CONFIGURATION IF NOT EXISTS chinese (PARSER = pg_catalog.default);

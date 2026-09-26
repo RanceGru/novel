@@ -1,0 +1,71 @@
+/* 全局样式 */
+@import './themes.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 基础重置 */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Tiptap 编辑器样式 */
+.tiptap-editor {
+  outline: none;
+  min-height: 100%;
+  padding: 1.5rem;
+  font-size: 16px;
+  line-height: 1.8;
+  color: var(--editor-text);
+  background: var(--editor-bg);
+}
+
+.tiptap-editor p {
+  margin-bottom: 0.5em;
+}
+
+.tiptap-editor h1 { font-size: 1.8em; font-weight: 700; margin: 1em 0 0.5em; }
+.tiptap-editor h2 { font-size: 1.5em; font-weight: 600; margin: 0.8em 0 0.4em; }
+.tiptap-editor h3 { font-size: 1.2em; font-weight: 600; margin: 0.6em 0 0.3em; }
+
+.tiptap-editor ::selection {
+  background: var(--editor-selection);
+}
+
+/* AI 生成文本高亮 */
+.ai-generated {
+  background: var(--ai-generated-bg);
+  border-left: 2px solid var(--ai-generated-border);
+  padding-left: 8px;
+}
+
+/* 滚动条 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--text-tertiary);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
+}

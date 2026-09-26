@@ -1,0 +1,50 @@
+# 依赖
+node_modules/
+.pnpm-store/
+
+# 本地工具链（corepack 下载的 pnpm、pnpm store、调试截图等）
+.tools/
+
+# 构建输出
+dist/
+out/
+build/
+release/
+
+# 环境变量
+.env
+.env.local
+.env.*.local
+# 模板文件不含密钥，需要入库以供参考
+!.env.example
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+.vscode/settings.json
+
+# 操作系统
+.DS_Store
+Thumbs.db
+*.log
+
+# 数据库
+*.sqlite
+*.sqlite3
+
+# Electron
+client/out/
+client/release/
+# Electron 主进程/预加载脚本的构建产物（由 vite-plugin-electron 每次启动重新生成）
+client/dist-electron/
+
+# 测试覆盖率
+coverage/
+
+# TypeScript
+*.tsbuildinfo
+
+# Docker
+.env.production.local
