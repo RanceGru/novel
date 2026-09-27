@@ -4,7 +4,7 @@ import { useAuthStore } from '../../stores/auth.store';
 import { useProjectStore } from '../../stores/project.store';
 import { useEditorStore } from '../../stores/editor.store';
 import { apiClient } from '../../services/api.service';
-import { FileText, Plus, ChevronRight, ChevronDown, Settings, FolderPlus, FilePlus, Search, Library } from 'lucide-react';
+import { FileText, ChevronRight, ChevronDown, Settings, FolderPlus, FilePlus, Search, Library } from 'lucide-react';
 import OutlineTree from '../outline/OutlineTree';
 import CharacterList from '../characters/CharacterList';
 import WorldSettingList from '../worldbuilding/WorldSettingList';
@@ -230,7 +230,7 @@ export default function LeftSidebar() {
                 {bookTab[book.id] === 'toc' &&
                   (volumes.filter(v => v.bookId === book.id && v.title !== '默认').length === 0 && defaultChapters.length === 0 ? (
                 <div className="pl-8 pr-3 py-3 text-xs text-text-tertiary">
-                  暂无内容，点击右边 <Plus size={10} className="inline" /> 新建
+                  暂无内容，点击右边+新建
                 </div>
               ) : (
                 <>
@@ -314,6 +314,12 @@ export default function LeftSidebar() {
                           )}
                         </div>
                       )))}
+                      {/* 分卷展开但无章节时的空状态提示（缩进与章节项 pl-16 保持一致） */}
+                      {expandedVolume === volume.id && chapters.filter(c => c.volumeId === volume.id).length === 0 && (
+                        <div className="pl-16 pr-3 py-2 text-xs text-text-tertiary">
+                          暂无内容，点击右边+新建
+                        </div>
+                      )}
                       {/* 批量操作栏 */}
                       {batchVolumeId === volume.id && (
                         <div className="pl-10 pr-3 py-1 flex items-center gap-2 text-xs border-t border-border-primary bg-brand-primary/5">
@@ -455,13 +461,17 @@ export default function LeftSidebar() {
                 setExpandedBook(activeBookForAdd.id);
                 setShowAddMenu(false);
               }} className="w-full px-3 py-2 text-left text-sm hover:bg-bg-hover rounded flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-current inline-block shrink-0 ml-1" />
-                分卷外创建
+                {/* 图标统一占 14px 槽位：圆点 8px 居中于此，与右侧 ChevronRight(14px) 等宽，
+                    否则第二行文本会被推右 6px，两行标签对不齐 */}
+                <span className="w-3.5 shrink-0 flex items-center justify-center">
+                  <span className="w-2 h-2 rounded-full bg-current inline-block" />
+                </span>
+                <span className="flex-1">分卷外创建</span>
               </button>
               <details className="group">
                 <summary className="px-3 py-2 text-sm hover:bg-bg-hover rounded cursor-pointer list-none flex items-center gap-2">
-                  <ChevronRight size={14} className="group-open:rotate-90 transition-transform shrink-0 ml-1" />
-                  分卷内创建
+                  <ChevronRight size={14} className="shrink-0 group-open:rotate-90 transition-transform" />
+                  <span className="flex-1">分卷内创建</span>
                 </summary>
                 <div className="pl-4">
                   {volumes.filter(v => v.bookId === activeBookForAdd.id && v.title !== '默认').map(v => (
