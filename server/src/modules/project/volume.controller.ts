@@ -30,7 +30,7 @@ export class VolumeController {
   async update(
     @Param('id') id: string,
     @CurrentUser() user: { id: string },
-    @Body() body: { title?: string; summary?: string; status?: string },
+    @Body() body: { title?: string; volumeNumber?: number; summary?: string; status?: string },
   ) {
     return this.volumeService.update(id, user.id, body);
   }

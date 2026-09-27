@@ -48,7 +48,7 @@ export class VolumeService {
     return this.volumeRepository.save(volume);
   }
 
-  async update(id: string, userId: string, data: { title?: string; summary?: string; outlinePlan?: string; status?: string }): Promise<Volume> {
+  async update(id: string, userId: string, data: { title?: string; volumeNumber?: number; summary?: string; outlinePlan?: string; status?: string }): Promise<Volume> {
     const volume = await this.findById(id);
     const book = await this.bookService.findById(volume.bookId);
     if (book.userId !== userId) {
