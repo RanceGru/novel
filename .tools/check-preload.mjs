@@ -62,14 +62,32 @@ async function main() {
   const tmp = mkdtempSync(path.join(tmpdir(), 'novel-preload-'));
   const target = path.join(tmp, 'roundtrip.txt');
 
-  // 先确认构建产物确实是 CJS
+  // 先确认构建产物确实是 CJS。
+  //
+  // 说明：main.js 是 ESM（Electron 28 支持 ESM 主进程），所以只对 preload 做这些检查。
+  //
+  // 这里踩过两个坑，两个都表现为「preload 加载失败 → window.electronAPI 不存在」：
+  //  ① build.lib 与 build.rollupOptions.output 同时定义时，Vite 的 lib 模式会合并出
+  //     **两个 output 都叫 preload.cjs**（一个 es、一个 cjs）并发写同一文件，
+  //     谁后写谁赢 → 产物在干净 CJS 与 ESM 包装之间随机交替。
+  //  ② vite-plugin-electron-renderer 会无视 lib.formats = ['cjs'] 把产物转成 ESM。
+  // 因此下面的断言必须查**内容**而不是文件大小（两者曾同为 613B，内容却一个是 CJS、
+  // 一个是 ESM），并且要检查是否出现重复写导致的残片。
   console.log('【⓪ 构建产物】');
   const preloadPath = path.join(CLIENT, 'dist-electron/preload.cjs');
   if (existsSync(preloadPath)) {
     const built = readFileSync(preloadPath, 'utf-8');
     check('存在 dist-electron/preload.cjs', true);
     check('不含 ESM import 语句', !/^\s*import\s/m.test(built));
+    check('不含 ESM export 语句', !/(^|\n)\s*export\s/.test(built));
+    check('不是被包装过的产物（无 require_preload 包装）', !/require_preload/.test(built));
     check('使用 CJS require', /require\(["']electron["']\)/.test(built));
+    // 两个 output 并发写会留下重复残片：某一行/片段在文件里出现多次
+    const lines = built.split('\n').map((l) => l.trim()).filter((l) => l.length > 12);
+    const dup = lines.filter((l, i) => lines.indexOf(l) !== i);
+    check('无重复写导致的残片', dup.length === 0, dup.slice(0, 2).join(' | '));
+    check('暴露 electronAPI 的调用只出现一次',
+      (built.match(/exposeInMainWorld/g) || []).length === 1);
   } else {
     check('存在 dist-electron/preload.cjs', false, '（需先构建）');
   }
