@@ -1,6 +1,7 @@
-// 把已登录的窗口恢复到「示例作品」：刷新 → 选中该书 → 展开目录
+// 把已登录的窗口恢复到指定作品：刷新 → 选中该书 → 展开目录
+// TITLE 可用环境变量 WINDOW_BOOK_TITLE 覆盖，默认选库里当前存在的那本演示作品
 const PORT = 9260;
-const TITLE = '示例作品';
+const TITLE = process.env.WINDOW_BOOK_TITLE || '示例作品';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 class CDP {

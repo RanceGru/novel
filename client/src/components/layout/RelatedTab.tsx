@@ -1,8 +1,8 @@
 // 作品相关标签页 — 纲树/角色/世界观
 import { useState, useEffect } from 'react';
-import { ChevronRight, ChevronDown } from 'lucide-react';
+import { ChevronRight, ChevronDown, Plus } from 'lucide-react';
 import OutlineTree from '../outline/OutlineTree';
-import CharacterList from '../characters/CharacterList';
+import CharacterList, { OPEN_NEW_CHARACTER_EVENT } from '../characters/CharacterList';
 import { useCharacterStore } from '../../stores/character.store';
 import { useWorldbuildingStore } from '../../stores/worldbuilding.store';
 
@@ -41,16 +41,42 @@ function OutlineSection({ bookId, expanded, onToggle }: { bookId: string; expand
   );
 }
 
+/** 角色区：标题行右侧直接放「新建角色」，列表内不再重复一行标题 */
 function CharacterSection({ bookId, expanded, onToggle }: { bookId: string; expanded: boolean; onToggle: () => void }) {
   const { characters, loadCharacters } = useCharacterStore();
   useEffect(() => { if (expanded) loadCharacters(bookId); }, [expanded, bookId]);
+
+  /**
+   * 收起状态下点了「新建角色」：此时 CharacterList 还没挂载，直接派发事件没人接收。
+   * 所以先记下意图，等展开并挂载后再派发（见下面的 effect）。
+   */
+  const [pendingNew, setPendingNew] = useState(false);
+  const startNewCharacter = () => {
+    if (expanded) window.dispatchEvent(new Event(OPEN_NEW_CHARACTER_EVENT));
+    else { setPendingNew(true); onToggle(); }
+  };
+  useEffect(() => {
+    if (expanded && pendingNew) {
+      setPendingNew(false);
+      window.dispatchEvent(new Event(OPEN_NEW_CHARACTER_EVENT));
+    }
+  }, [expanded, pendingNew]);
+
   return (
     <div>
-      <button onClick={onToggle} className="w-full pl-10 pr-3 py-1.5 text-left text-sm hover:bg-bg-hover flex items-center gap-1.5 transition-colors">
-        {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-        <span className="truncate flex-1">角色</span>
-        <span className="text-text-tertiary text-xs">{characters.length}</span>
-      </button>
+      {/* 与「细纲」header 同款：箭头 + 名称 + 右侧操作按钮 */}
+      <div data-role="character-header"
+        className="w-full pl-10 pr-3 py-1.5 text-left text-sm hover:bg-bg-hover flex items-center gap-1.5 transition-colors cursor-pointer"
+        onClick={onToggle}>
+        {expanded ? <ChevronDown size={12} className="text-text-tertiary" /> : <ChevronRight size={12} className="text-text-tertiary" />}
+        <span className="text-text-secondary flex-1">角色</span>
+        <button data-role="new-character"
+          onClick={(e) => { e.stopPropagation(); startNewCharacter(); }}
+          className="inline-flex shrink-0 rounded hover:bg-bg-active text-text-tertiary hover:text-text-primary transition-colors p-0.5"
+          title={`新建角色（当前 ${characters.length} 个）`}>
+          <Plus size={15} />
+        </button>
+      </div>
       {/* 展开后使用完整列表：角色可继续展开，其下子项支持增删改 */}
       {expanded && <div className="border-l border-border-primary ml-10"><CharacterList /></div>}
     </div>

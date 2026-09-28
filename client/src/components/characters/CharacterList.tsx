@@ -6,7 +6,15 @@
 import { useEffect, useState } from 'react';
 import { useCharacterStore } from '../../stores/character.store';
 import { useProjectStore } from '../../stores/project.store';
-import { ChevronRight, ChevronDown, Plus, Edit3, Trash2, X } from 'lucide-react';
+import { ChevronRight, ChevronDown, Plus, Edit3, X } from 'lucide-react';
+
+/**
+ * 「新建角色」的触发事件名。
+ * 按钮放在 RelatedTab 的角色标题行里（与「细纲」header 的按钮位置一致），
+ * 而对话框在本组件内，故用窗口事件解耦两者，避免把弹窗状态提升到父组件。
+ * 定义在此处导出，RelatedTab 直接引用，避免字符串两处各写一份。
+ */
+export const OPEN_NEW_CHARACTER_EVENT = 'novel:open-new-character';
 
 export default function CharacterList() {
   const {
@@ -26,6 +34,13 @@ export default function CharacterList() {
     if (currentBook) loadCharacters(currentBook.id);
   }, [currentBook]);
 
+  // 角色标题行里的「新建角色」按钮通过窗口事件触发本组件的对话框
+  useEffect(() => {
+    const open = () => setShowNew(true);
+    window.addEventListener(OPEN_NEW_CHARACTER_EVENT, open);
+    return () => window.removeEventListener(OPEN_NEW_CHARACTER_EVENT, open);
+  }, []);
+
   if (!currentBook) return null;
   const bookId = currentBook.id;
 
@@ -40,13 +55,6 @@ export default function CharacterList() {
 
   return (
     <div className="text-xs">
-      <div className="flex items-center justify-between px-3 py-1.5 border-b border-border-primary">
-        <span className="font-semibold text-text-tertiary">👤 角色 ({characters.length})</span>
-        <button onClick={() => setShowNew(true)} className="text-brand-primary hover:underline" title="新建角色">
-          <Plus size={14} />
-        </button>
-      </div>
-
       {error && (
         <div className="mx-2 my-1 px-2 py-1 rounded bg-error/10 border border-error/20 text-error flex items-start gap-1">
           <span className="flex-1">{error}</span>
