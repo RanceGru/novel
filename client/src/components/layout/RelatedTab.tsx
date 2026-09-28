@@ -10,8 +10,18 @@ const WORLD_CATEGORIES = [
   { key: 'era', label: '时代信息' }, { key: 'society', label: '社会背景' },
   { key: 'power_system', label: '力量体系' }, { key: 'politics', label: '政治体系' },
   { key: 'economy', label: '经济体系' }, { key: 'culture', label: '文化体系' },
-  { key: 'geography', label: '地理位置' }, { key: 'other', label: '其他补充' },
+  { key: 'geography', label: '地理位置' },
 ];
+
+/** 从「其他补充N」这类标题里取最大序号，用于新条目的默认命名 */
+function nextSupplementNumber(titles: string[]): number {
+  let max = 0;
+  for (const t of titles) {
+    const m = /^其他补充(\d+)$/.exec((t || '').trim());
+    if (m) max = Math.max(max, Number(m[1]));
+  }
+  return max + 1;
+}
 
 interface Props { bookId: string; }
 
@@ -84,29 +94,65 @@ function CharacterSection({ bookId, expanded, onToggle }: { bookId: string; expa
 }
 
 function WorldSection({ bookId, expanded, onToggle }: { bookId: string; expanded: boolean; onToggle: () => void }) {
-  const { settings, loadSettings } = useWorldbuildingStore();
+  const { settings, loadSettings, create } = useWorldbuildingStore();
   useEffect(() => { if (expanded) loadSettings(bookId); }, [expanded, bookId]);
+
+  /**
+   * 新增一条世界观信息：归类到 other，默认命名「其他补充1、2、3…」。
+   * 收起状态下先展开再创建，避免用户点了没反应。
+   */
+  const addSupplement = async () => {
+    const n = nextSupplementNumber(settings.map((s: any) => s.title));
+    await create(bookId, { category: 'other', title: `其他补充${n}`, content: '' });
+    if (!expanded) onToggle();
+  };
+
   return (
     <div>
-      <button onClick={onToggle} className="w-full pl-10 pr-3 py-1.5 text-left text-sm hover:bg-bg-hover flex items-center gap-1.5 transition-colors">
-        {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-        <span className="truncate flex-1">世界观</span>
-        <span className="text-text-tertiary text-xs">{settings.length}</span>
-      </button>
-      {expanded && WORLD_CATEGORIES.map(cat => {
-        const items = settings.filter((s: any) => s.category === cat.key);
-        return (
-          <div key={cat.key}>
-            <div className="pl-14 pr-3 py-1 text-xs text-text-secondary flex items-center gap-1">
-              <span className="truncate flex-1">{cat.label}</span>
-              <span className="text-text-tertiary text-[10px]">{items.length}</span>
-            </div>
-            {items.map((s: any) => (
-              <div key={s.id} className="pl-20 pr-3 py-0.5 text-text-tertiary text-xs truncate">{s.title}</div>
-            ))}
-          </div>
-        );
-      })}
+      {/* 与「角色」行同款：箭头 + 名称 + 右侧「新增信息」按钮 */}
+      <div data-role="world-header"
+        className="w-full pl-10 pr-3 py-1.5 text-left text-sm hover:bg-bg-hover flex items-center gap-1.5 transition-colors cursor-pointer"
+        onClick={onToggle}>
+        {expanded ? <ChevronDown size={12} className="text-text-tertiary" /> : <ChevronRight size={12} className="text-text-tertiary" />}
+        <span className="text-text-secondary flex-1">世界观</span>
+        <button data-role="add-world-setting"
+          onClick={(e) => { e.stopPropagation(); addSupplement(); }}
+          className="inline-flex shrink-0 rounded hover:bg-bg-active text-text-tertiary hover:text-text-primary transition-colors p-0.5"
+          title="新增信息">
+          <Plus size={15} />
+        </button>
+      </div>
+      {expanded && (
+        <div>
+          {/* 固定分类：只显示该分类已有条目的分组 */}
+          {WORLD_CATEGORIES.map(cat => {
+            const items = settings.filter((s: any) => s.category === cat.key);
+            if (!items.length) return null;
+            return (
+              <div key={cat.key}>
+                <div className="pl-14 pr-3 py-1 text-xs text-text-secondary flex items-center gap-1">
+                  <span className="truncate flex-1">{cat.label}</span>
+                  <span className="text-text-tertiary text-[10px]">{items.length}</span>
+                </div>
+                {items.map((s: any) => (
+                  <div key={s.id} className="pl-20 pr-3 py-0.5 text-text-tertiary text-xs truncate">{s.title}</div>
+                ))}
+              </div>
+            );
+          })}
+
+          {/* 「其他补充」不再单独占一行分组标题（已从 WORLD_CATEGORIES 移除），
+              新增的条目直接列在下面，命名即「其他补充1、2、3…」 */}
+          {settings.filter((s: any) => s.category === 'other').map((s: any) => (
+            <div key={s.id} data-role="world-other-item"
+              className="pl-14 pr-3 py-0.5 text-text-secondary text-xs truncate">{s.title}</div>
+          ))}
+
+          {settings.length === 0 && (
+            <div className="pl-14 pr-3 py-1 text-text-tertiary text-xs">暂无信息，点击右侧 + 新增</div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

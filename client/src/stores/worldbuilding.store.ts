@@ -9,8 +9,10 @@ interface WBState {
   loading: boolean;
   loadSettings: (bookId: string, category?: string) => Promise<void>;
   create: (bookId: string, data: any) => Promise<void>;
-  update: (id: string, data: any) => Promise<void>;
-  remove: (id: string) => Promise<void>;
+  // 注意：控制器挂在 books/:bookId/world-settings/:id 下，
+  // 原先写成 /world-settings/:id 会 404（静默失败），故这里需要 bookId。
+  update: (bookId: string, id: string, data: any) => Promise<void>;
+  remove: (bookId: string, id: string) => Promise<void>;
 }
 
 export const useWorldbuildingStore = create<WBState>((set, get) => ({
@@ -24,6 +26,12 @@ export const useWorldbuildingStore = create<WBState>((set, get) => ({
     await apiClient.post(`/books/${bookId}/world-settings`, data);
     get().loadSettings(bookId);
   },
-  update: async (id, data) => { await apiClient.patch(`/world-settings/${id}`, data); },
-  remove: async (id) => { await apiClient.delete(`/world-settings/${id}`); },
+  update: async (bookId, id, data) => {
+    await apiClient.patch(`/books/${bookId}/world-settings/${id}`, data);
+    get().loadSettings(bookId);
+  },
+  remove: async (bookId, id) => {
+    await apiClient.delete(`/books/${bookId}/world-settings/${id}`);
+    get().loadSettings(bookId);
+  },
 }));
