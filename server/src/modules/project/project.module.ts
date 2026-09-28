@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BookController } from './book.controller';
 import { BookService } from './book.service';
+import { BookCleanupService } from './book-cleanup.service';
 import { VolumeController } from './volume.controller';
 import { VolumeService } from './volume.service';
 import { ChapterController } from './chapter.controller';
@@ -14,7 +15,7 @@ import { Chapter } from './entities/chapter.entity';
 @Module({
   imports: [TypeOrmModule.forFeature([Book, Volume, Chapter])],
   controllers: [BookController, VolumeController, ChapterController],
-  providers: [BookService, VolumeService, ChapterService],
-  exports: [BookService, VolumeService, ChapterService],
+  providers: [BookService, VolumeService, ChapterService, BookCleanupService],
+  exports: [BookService, VolumeService, ChapterService, BookCleanupService],
 })
 export class ProjectModule {}

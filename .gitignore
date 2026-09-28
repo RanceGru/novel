@@ -3,7 +3,13 @@ node_modules/
 .pnpm-store/
 
 # 本地工具链（corepack 下载的 pnpm、pnpm store、调试截图等）
-.tools/
+# 注意：不能整目录忽略 .tools/，因为其中的验证脚本需要入库
+.tools/pnpm-store/
+.tools/corepack/
+.tools/bin/
+.tools/shots/
+.tools/*.log
+.tools/*.txt
 
 # 构建输出
 dist/

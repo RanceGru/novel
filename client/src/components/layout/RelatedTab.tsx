@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { ChevronRight, ChevronDown } from 'lucide-react';
 import OutlineTree from '../outline/OutlineTree';
+import CharacterList from '../characters/CharacterList';
 import { useCharacterStore } from '../../stores/character.store';
 import { useWorldbuildingStore } from '../../stores/worldbuilding.store';
 
@@ -50,12 +51,8 @@ function CharacterSection({ bookId, expanded, onToggle }: { bookId: string; expa
         <span className="truncate flex-1">角色</span>
         <span className="text-text-tertiary text-xs">{characters.length}</span>
       </button>
-      {expanded && characters.map((c: any) => (
-        <div key={c.id} className="pl-14 pr-3 py-1 text-xs text-text-secondary flex items-center gap-1">
-          <span className="w-1.5 h-1.5 rounded-full bg-brand-primary shrink-0" />
-          <span className="truncate">{c.name}{c.alias ? ` (${c.alias})` : ''}</span>
-        </div>
-      ))}
+      {/* 展开后使用完整列表：角色可继续展开，其下子项支持增删改 */}
+      {expanded && <div className="border-l border-border-primary ml-10"><CharacterList /></div>}
     </div>
   );
 }

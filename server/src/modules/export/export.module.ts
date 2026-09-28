@@ -6,11 +6,13 @@ import { ExportService } from './export.service';
 import { Chapter } from '../project/entities/chapter.entity';
 import { Volume } from '../project/entities/volume.entity';
 import { Book } from '../project/entities/book.entity';
-import { BookService } from '../project/book.service';
+import { ProjectModule } from '../project/project.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Chapter, Volume, Book])],
+  // BookService 由 ProjectModule 提供并导出；此处不要再把它声明为本模块的 provider，
+  // 否则会产生第二个实例，并因为缺少其新依赖而启动失败。
+  imports: [TypeOrmModule.forFeature([Chapter, Volume, Book]), ProjectModule],
   controllers: [ExportController],
-  providers: [ExportService, BookService],
+  providers: [ExportService],
 })
 export class ExportModule {}

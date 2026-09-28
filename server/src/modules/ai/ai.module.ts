@@ -9,7 +9,7 @@ import { ModelRouterService } from './model-router.service';
 import { Chapter } from '../project/entities/chapter.entity';
 import { Book } from '../project/entities/book.entity';
 import { Volume } from '../project/entities/volume.entity';
-import { BookService } from '../project/book.service';
+import { ProjectModule } from '../project/project.module';
 import { TokenTransaction } from '../token/entities/token-transaction.entity';
 import { MemoryModule } from '../memory/memory.module';
 import { AgentsModule } from './agents/agents.module';
@@ -19,10 +19,13 @@ import { AgentsModule } from './agents/agents.module';
     TypeOrmModule.forFeature([Chapter, Book, Volume, TokenTransaction]),
     MemoryModule,
     AgentsModule,
+    // BookService 从 ProjectModule 导入（本模块也曾把它列为 provider，
+    // 那会造出第二个实例，且缺少其新依赖）。
+    ProjectModule,
   ],
   controllers: [AiController],
   providers: [
-    AiService, StreamingService, PromptTemplateService, ContextCompressorService, ModelRouterService, BookService,
+    AiService, StreamingService, PromptTemplateService, ContextCompressorService, ModelRouterService,
   ],
   exports: [AiService],
 })

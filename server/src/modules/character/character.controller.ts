@@ -35,6 +35,41 @@ export class CharacterController {
     return this.characterService.getGraph(bookId, user.id);
   }
 
+  // ==================== 角色子项 ====================
+
+  @Get('sections')
+  @ApiOperation({ summary: '获取该书全部角色子项（前端按角色分组展开）' })
+  async listSections(@Param('bookId') bookId: string, @CurrentUser() user: { id: string }) {
+    return this.characterService.listSections(bookId, user.id);
+  }
+
+  @Post(':characterId/sections')
+  @ApiOperation({ summary: '在指定角色下新建子项' })
+  async createSection(
+    @Param('characterId') characterId: string,
+    @CurrentUser() user: { id: string },
+    @Body() body: { title: string; content?: string },
+  ) {
+    return this.characterService.createSection(characterId, user.id, body);
+  }
+
+  @Patch('sections/:sectionId')
+  @ApiOperation({ summary: '更新角色子项' })
+  async updateSection(
+    @Param('sectionId') sectionId: string,
+    @CurrentUser() user: { id: string },
+    @Body() body: { title?: string; content?: string },
+  ) {
+    return this.characterService.updateSection(sectionId, user.id, body);
+  }
+
+  @Delete('sections/:sectionId')
+  @ApiOperation({ summary: '删除角色子项' })
+  async deleteSection(@Param('sectionId') sectionId: string, @CurrentUser() user: { id: string }) {
+    await this.characterService.deleteSection(sectionId, user.id);
+    return { message: '角色子项已删除' };
+  }
+
   @Post('relations')
   async createRelation(@Param('bookId') bookId: string, @CurrentUser() user: { id: string }, @Body() body: any) {
     return this.characterService.createRelation(bookId, user.id, body);

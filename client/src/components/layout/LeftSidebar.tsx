@@ -5,8 +5,6 @@ import { useProjectStore } from '../../stores/project.store';
 import { useEditorStore } from '../../stores/editor.store';
 import { apiClient } from '../../services/api.service';
 import { FileText, ChevronRight, ChevronDown, Settings, FolderPlus, FilePlus, Search, Library } from 'lucide-react';
-import CharacterList from '../characters/CharacterList';
-import WorldSettingList from '../worldbuilding/WorldSettingList';
 import RelatedTab from './RelatedTab';
 import SettingsDialog from './SettingsDialog';
 import SearchDialog from './SearchDialog';

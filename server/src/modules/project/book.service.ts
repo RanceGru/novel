@@ -5,6 +5,8 @@ import { Repository } from 'typeorm';
 import { Book } from './entities/book.entity';
 import { Volume } from './entities/volume.entity';
 import { Chapter } from './entities/chapter.entity';
+import { BookCleanupService } from './book-cleanup.service';
+import { ph } from '../../common/utils/sql-params.util';
 import { omitUndefined } from '../../common/utils/object.utils';
 
 @Injectable()
@@ -16,6 +18,7 @@ export class BookService {
     private volumeRepository: Repository<Volume>,
     @InjectRepository(Chapter)
     private chapterRepository: Repository<Chapter>,
+    private bookCleanup: BookCleanupService,
   ) {}
 
   async listByUser(userId: string): Promise<Book[]> {
@@ -51,24 +54,21 @@ export class BookService {
     const book = await this.findById(id);
     if (book.userId !== userId) throw new ForbiddenException('无权操作此书籍');
 
-    // 级联删除：先删章节
-    const volumes = await this.volumeRepository.find({ where: { bookId: id } });
-    for (const vol of volumes) {
-      await this.chapterRepository.delete({ volumeId: vol.id });
-    }
-    // 再删分卷
-    await this.volumeRepository.delete({ bookId: id });
-    // 最后删书籍
-    await this.bookRepository.remove(book);
+    // 级联清理：作品是几乎所有业务表的根，且多数外键没有数据库级 ON DELETE CASCADE，
+    // 因此统一交给 BookCleanupService 在事务里按依赖顺序清理（含 books 行本身）。
+    await this.bookCleanup.deleteBookCascade(id);
   }
 
   /** 更新书籍字数统计 */
   async updateWordCount(bookId: string): Promise<void> {
+    // 注意：占位符必须按驱动生成。
+    // 原先写的是字面量 ?，PostgreSQL 下无法绑定参数、SQLite 下则永远是 0；
+    // 现在用 ph() 统一处理（PG 用 $1，SQLite 用 ?）。
     const result = await this.bookRepository.manager.query(
       `SELECT COALESCE(SUM(c.word_count), 0) as total
        FROM chapters c
        JOIN volumes v ON v.id = c.volume_id
-       WHERE v.book_id = ?`,
+       WHERE v.book_id = ${ph(this.bookRepository.manager, 1)}`,
       [bookId],
     );
     await this.bookRepository.update(bookId, {
