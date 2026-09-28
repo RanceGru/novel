@@ -88,7 +88,8 @@ export default function CharacterList() {
             <div data-char-row="character"
               className="w-full pl-5 pr-3 py-1 hover:bg-bg-hover flex items-center gap-1.5 transition-colors group cursor-pointer"
               onClick={() => toggle(c.id)}>
-              {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+              {/* 箭头颜色与纲树各行保持一致（text-text-tertiary），否则会继承正文色显得过深 */}
+              {open ? <ChevronDown size={12} className="text-text-tertiary" /> : <ChevronRight size={12} className="text-text-tertiary" />}
               <span className="truncate flex-1">{c.name}</span>
               {c.alias && <span className="text-text-tertiary shrink-0">({c.alias})</span>}
               <button data-role="add-section"

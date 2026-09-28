@@ -133,8 +133,43 @@ async function main() {
   const lefts = [...new Set(flat.info.map((x) => x.左边界))];
   check('所有角色左边界一致（同一层级平铺）', lefts.length === 1, `左边界=${lefts.join('/')}`);
 
-  // ⑤ 点右侧按钮打开新建角色对话框
-  console.log('\n【④ 点「新建角色」】');
+  // ⑤ 箭头颜色与纲树一致（纲树各行用的是 text-text-tertiary）
+  console.log('\n【④ 箭头颜色与纲树一致】');
+  // 先展开纲树，取一个纲树行的箭头做基准
+  await cdp.eval(`
+    (() => {
+      const s=[...document.querySelectorAll('span')].filter(x=>(x.textContent||'').trim()==='纲树');
+      if(s.length) (s[0].closest('div[class*="cursor-pointer"]')||s[0].parentElement).click();
+      return 'ok';
+    })()
+  `);
+  await sleep(2500);
+  const colors = await cdp.eval(`
+    (() => {
+      const svgColor = (el) => {
+        if (!el) return null;
+        const s = el.querySelector('svg');
+        return s ? getComputedStyle(s).color : null;
+      };
+      const charRow = document.querySelector('[data-char-row="character"]');
+      const outlineRow = document.querySelector('[data-outline-row="volume"]')
+        || document.querySelector('[data-outline-row="chapter"]')
+        || document.querySelector('[data-outline-row="detailed"]');
+      return {
+        角色箭头: svgColor(charRow),
+        纲树箭头: svgColor(outlineRow),
+        纲树来源: outlineRow ? (outlineRow.getAttribute('data-outline-row')) : null,
+      };
+    })()
+  `);
+  console.log('   颜色:', JSON.stringify(colors));
+  check('取到了角色箭头颜色', !!colors.角色箭头);
+  check('取到了纲树箭头颜色做基准', !!colors.纲树箭头, `来源=${colors.纲树来源}`);
+  check('角色箭头颜色与纲树一致', !!colors.角色箭头 && colors.角色箭头 === colors.纲树箭头,
+    `${colors.角色箭头} vs ${colors.纲树箭头}`);
+
+  // ⑥ 点右侧按钮打开新建角色对话框
+  console.log('\n【⑤ 点「新建角色」】');
   // 先收起，验证「收起状态下点按钮也能打开」（会自动展开）
   await cdp.eval(`(() => { const h=document.querySelector('[data-role="character-header"]'); h.click(); return 'ok'; })()`);
   await sleep(1500);
