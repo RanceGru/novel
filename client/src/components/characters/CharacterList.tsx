@@ -44,12 +44,6 @@ export default function CharacterList() {
   if (!currentBook) return null;
   const bookId = currentBook.id;
 
-  const categories = [
-    { key: 'protagonist', label: '主角', color: 'text-yellow-400' },
-    { key: 'antagonist', label: '反派', color: 'text-red-400' },
-    { key: 'supporting', label: '配角', color: 'text-blue-400' },
-    { key: 'ensemble', label: '群像', color: 'text-green-400' },
-  ];
   const toggle = (id: string) => setExpanded(p => ({ ...p, [id]: !p[id] }));
   const run = async (fn: () => Promise<any>) => { try { await fn(); } catch { /* 错误已入 store.error */ } };
 
@@ -81,113 +75,104 @@ export default function CharacterList() {
         />
       )}
 
-      {/* 分类角色列表；每个角色可展开显示其子项 */}
-      {categories.map(cat => {
-        const chars = characters.filter(c => c.category === cat.key);
-        if (!chars.length) return null;
+      {/* 角色列表：不再按「主角/反派/配角/群像」分组，所有角色平铺；
+          分类字段仍保留在数据与编辑表单里，只是不再作为界面分层 */}
+      {characters.map(c => {
+        const kids = sections
+          .filter(s => s.characterId === c.id)
+          .sort((a, b) => a.sortOrder - b.sortOrder);
+        const open = !!expanded[c.id];
         return (
-          <div key={cat.key}>
-            <div className="px-3 py-1 text-text-tertiary font-medium">{cat.label}</div>
-            {chars.map(c => {
-              const kids = sections
-                .filter(s => s.characterId === c.id)
-                .sort((a, b) => a.sortOrder - b.sortOrder);
-              const open = !!expanded[c.id];
-              return (
-                <div key={c.id}>
-                  {/* 角色行：与目录的分卷行同构（可展开 + hover 出「+」新建子项） */}
-                  <div data-char-row="character"
-                    className="w-full pl-5 pr-3 py-1 hover:bg-bg-hover flex items-center gap-1.5 transition-colors group cursor-pointer"
-                    onClick={() => toggle(c.id)}>
-                    {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                    <span className={`${cat.color} shrink-0`}>●</span>
-                    <span className="truncate flex-1">{c.name}</span>
-                    {c.alias && <span className="text-text-tertiary shrink-0">({c.alias})</span>}
-                    <button data-role="add-section"
-                      onClick={(e) => { e.stopPropagation(); setExpanded(p => ({ ...p, [c.id]: true })); setNewSection({ characterId: c.id, title: '' }); }}
-                      className="hidden group-hover:inline shrink-0 text-text-tertiary hover:text-text-primary"
-                      title="新建子项">
-                      <Plus size={13} />
-                    </button>
-                    <button data-role="edit-character"
-                      onClick={(e) => { e.stopPropagation(); setEditing(c); }}
-                      className="hidden group-hover:inline shrink-0 text-text-tertiary hover:text-text-primary"
-                      title="编辑角色">
-                      <Edit3 size={12} />
-                    </button>
+          <div key={c.id}>
+            {/* 角色行：与目录的分卷行同构（可展开 + hover 出「+」新建子项） */}
+            <div data-char-row="character"
+              className="w-full pl-5 pr-3 py-1 hover:bg-bg-hover flex items-center gap-1.5 transition-colors group cursor-pointer"
+              onClick={() => toggle(c.id)}>
+              {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+              <span className="truncate flex-1">{c.name}</span>
+              {c.alias && <span className="text-text-tertiary shrink-0">({c.alias})</span>}
+              <button data-role="add-section"
+                onClick={(e) => { e.stopPropagation(); setExpanded(p => ({ ...p, [c.id]: true })); setNewSection({ characterId: c.id, title: '' }); }}
+                className="hidden group-hover:inline shrink-0 text-text-tertiary hover:text-text-primary"
+                title="新建子项">
+                <Plus size={13} />
+              </button>
+              <button data-role="edit-character"
+                onClick={(e) => { e.stopPropagation(); setEditing(c); }}
+                className="hidden group-hover:inline shrink-0 text-text-tertiary hover:text-text-primary"
+                title="编辑角色">
+                <Edit3 size={12} />
+              </button>
+            </div>
+
+            {/* 子项列表（无序号） */}
+            {open && (
+              <div>
+                {kids.map(s => (
+                  <div key={s.id} data-char-row="section" data-section-id={s.id} data-section-title={s.title}
+                    className="group flex items-center gap-1 pl-10 pr-3 py-0.5 hover:bg-bg-hover text-text-secondary">
+                    {renameSection?.id === s.id ? (
+                      <input autoFocus value={renameSection.title} placeholder="子项标题"
+                        onChange={e => setRenameSection({ id: s.id, title: e.target.value })}
+                        onKeyDown={async e => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            const t = renameSection.title.trim();
+                            if (t) await run(() => updateSection(bookId, s.id, { title: t }));
+                            setRenameSection(null);
+                          }
+                          if (e.key === 'Escape') setRenameSection(null);
+                        }}
+                        className="flex-1 min-w-0 px-1 py-0 text-xs border border-brand-primary rounded bg-bg-primary" />
+                    ) : (
+                      <>
+                        <span className="truncate flex-1">{s.title}</span>
+                        <span className="text-text-tertiary text-[10px] shrink-0">
+                          {s.content?.trim() ? `${s.content.trim().length}字` : '空'}
+                        </span>
+                        <button data-role="rename-section"
+                          onClick={(e) => { e.stopPropagation(); setRenameSection({ id: s.id, title: s.title }); }}
+                          className="hidden group-hover:inline shrink-0 text-text-tertiary hover:text-text-primary" title="重命名">
+                          <Edit3 size={11} />
+                        </button>
+                        <button data-role="delete-section"
+                          onClick={(e) => { e.stopPropagation(); if (confirm(`确认删除子项「${s.title}」？`)) run(() => deleteSection(bookId, s.id)); }}
+                          className="hidden group-hover:inline shrink-0 text-text-tertiary hover:text-error" title="删除">✕</button>
+                      </>
+                    )}
                   </div>
+                ))}
 
-                  {/* 子项列表（无序号） */}
-                  {open && (
-                    <div>
-                      {kids.map(s => (
-                        <div key={s.id} data-char-row="section" data-section-id={s.id} data-section-title={s.title}
-                          className="group flex items-center gap-1 pl-10 pr-3 py-0.5 hover:bg-bg-hover text-text-secondary">
-                          {renameSection?.id === s.id ? (
-                            <input autoFocus value={renameSection.title} placeholder="子项标题"
-                              onChange={e => setRenameSection({ id: s.id, title: e.target.value })}
-                              onKeyDown={async e => {
-                                if (e.key === 'Enter') {
-                                  e.preventDefault();
-                                  const t = renameSection.title.trim();
-                                  if (t) await run(() => updateSection(bookId, s.id, { title: t }));
-                                  setRenameSection(null);
-                                }
-                                if (e.key === 'Escape') setRenameSection(null);
-                              }}
-                              className="flex-1 min-w-0 px-1 py-0 text-xs border border-brand-primary rounded bg-bg-primary" />
-                          ) : (
-                            <>
-                              <span className="truncate flex-1">{s.title}</span>
-                              <span className="text-text-tertiary text-[10px] shrink-0">
-                                {s.content?.trim() ? `${s.content.trim().length}字` : '空'}
-                              </span>
-                              <button data-role="rename-section"
-                                onClick={(e) => { e.stopPropagation(); setRenameSection({ id: s.id, title: s.title }); }}
-                                className="hidden group-hover:inline shrink-0 text-text-tertiary hover:text-text-primary" title="重命名">
-                                <Edit3 size={11} />
-                              </button>
-                              <button data-role="delete-section"
-                                onClick={(e) => { e.stopPropagation(); if (confirm(`确认删除子项「${s.title}」？`)) run(() => deleteSection(bookId, s.id)); }}
-                                className="hidden group-hover:inline shrink-0 text-text-tertiary hover:text-error" title="删除">✕</button>
-                            </>
-                          )}
-                        </div>
-                      ))}
+                {/* 新建子项草稿（无序号，只有标题） */}
+                {newSection?.characterId === c.id && (
+                  <div className="pl-10 pr-3 py-1 flex items-center gap-1">
+                    <input autoFocus value={newSection.title} placeholder="子项标题"
+                      onChange={e => setNewSection({ characterId: c.id, title: e.target.value })}
+                      onKeyDown={async e => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          const t = newSection.title.trim();
+                          if (t) await run(() => createSection(bookId, c.id, { title: t }));
+                          setNewSection(null);
+                        }
+                        if (e.key === 'Escape') setNewSection(null);
+                      }}
+                      className="flex-1 min-w-0 px-1 py-0 text-xs border border-brand-primary rounded bg-bg-primary" />
+                    <button className="text-brand-primary shrink-0" title="确认"
+                      onClick={async () => {
+                        const t = newSection.title.trim();
+                        if (t) await run(() => createSection(bookId, c.id, { title: t }));
+                        setNewSection(null);
+                      }}>✓</button>
+                    <button className="text-text-tertiary shrink-0" title="取消" onClick={() => setNewSection(null)}>✕</button>
+                  </div>
+                )}
 
-                      {/* 新建子项草稿（无序号，只有标题） */}
-                      {newSection?.characterId === c.id && (
-                        <div className="pl-10 pr-3 py-1 flex items-center gap-1">
-                          <input autoFocus value={newSection.title} placeholder="子项标题"
-                            onChange={e => setNewSection({ characterId: c.id, title: e.target.value })}
-                            onKeyDown={async e => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault();
-                                const t = newSection.title.trim();
-                                if (t) await run(() => createSection(bookId, c.id, { title: t }));
-                                setNewSection(null);
-                              }
-                              if (e.key === 'Escape') setNewSection(null);
-                            }}
-                            className="flex-1 min-w-0 px-1 py-0 text-xs border border-brand-primary rounded bg-bg-primary" />
-                          <button className="text-brand-primary shrink-0" title="确认"
-                            onClick={async () => {
-                              const t = newSection.title.trim();
-                              if (t) await run(() => createSection(bookId, c.id, { title: t }));
-                              setNewSection(null);
-                            }}>✓</button>
-                          <button className="text-text-tertiary shrink-0" title="取消" onClick={() => setNewSection(null)}>✕</button>
-                        </div>
-                      )}
-
-                      {kids.length === 0 && newSection?.characterId !== c.id && (
-                        <div className="pl-10 pr-3 py-1 text-text-tertiary">暂无子项，点击右侧 + 新建</div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+                {kids.length === 0 && newSection?.characterId !== c.id && (
+                  <div className="pl-10 pr-3 py-1 text-text-tertiary">暂无子项，点击右侧 + 新建</div>
+                )}
+              </div>
+            )}
           </div>
         );
       })}

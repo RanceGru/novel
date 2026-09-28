@@ -38,7 +38,10 @@ async function main() {
   const auth = await loginDemo();
   const { J } = makeClient(auth.accessToken);
   const book = await freshBook(J, '角色标题行验证书');
+  // 故意用不同分类，用来验证分类分组层确实被去掉（不同分类的角色平铺在同一层）
   await J('POST', `/books/${book.id}/characters`, { name: '林逸', category: 'protagonist' });
+  await J('POST', `/books/${book.id}/characters`, { name: '柳氏', category: 'supporting' });
+  await J('POST', `/books/${book.id}/characters`, { name: '黑袍人', category: 'antagonist' });
 
   const list = await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json();
   const t = list.find((x) => x.type === 'page' && x.url.includes('5173'));
@@ -102,8 +105,36 @@ async function main() {
   check('列表内无重复标题（无 👤 行）', dup.listHeaders === 0);
   check('角色行正常渲染', dup.rows.some((r) => r.includes('林逸')), JSON.stringify(dup.rows));
 
-  // ④ 点右侧按钮打开新建角色对话框
-  console.log('\n【③ 点「新建角色」】');
+  // ④ 分类分组层已去掉：不同分类的角色平铺在同一层级
+  console.log('\n【③ 分类分组层已去掉】');
+  const flat = await cdp.eval(`
+    (() => {
+      const rows=[...document.querySelectorAll('[data-char-row="character"]')];
+      const info=rows.map(r=>{
+        const b=r.getBoundingClientRect();
+        return { 名称:(r.textContent||'').trim(), 左边界:Math.round(b.left), 缩进:Math.round(b.left - r.closest('[data-role="character-header"]')?.getBoundingClientRect().left || 0) };
+      });
+      // 分类层是纯文本 div（无 data 属性、无按钮），检查是否还存在这类「主角/反派/配角/群像」节点
+      const bodyLines=(document.body.innerText||'').split('\\n').map(s=>s.trim());
+      const catLabels=['主角','反派','配角','群像'];
+      const leftover=catLabels.filter(l=>{
+        // 只有单独成行才算分组标题（角色名恰好叫这些词的情况不误判）
+        const i=bodyLines.indexOf(l);
+        return i>=0 && bodyLines[i]===l && info.every(x=>x.名称!==l);
+      });
+      return { info, 残留分组标题: leftover };
+    })()
+  `);
+  console.log('   角色行:', JSON.stringify(flat.info));
+  console.log('   残留分组标题:', JSON.stringify(flat.残留分组标题));
+  check('3 个不同分类的角色都渲染出来', flat.info.length === 3, `count=${flat.info.length}`);
+  check('没有「主角/反派/配角/群像」分组标题', flat.残留分组标题.length === 0,
+    flat.残留分组标题.join(','));
+  const lefts = [...new Set(flat.info.map((x) => x.左边界))];
+  check('所有角色左边界一致（同一层级平铺）', lefts.length === 1, `左边界=${lefts.join('/')}`);
+
+  // ⑤ 点右侧按钮打开新建角色对话框
+  console.log('\n【④ 点「新建角色」】');
   // 先收起，验证「收起状态下点按钮也能打开」（会自动展开）
   await cdp.eval(`(() => { const h=document.querySelector('[data-role="character-header"]'); h.click(); return 'ok'; })()`);
   await sleep(1500);
