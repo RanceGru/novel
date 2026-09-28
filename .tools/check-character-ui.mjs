@@ -1,7 +1,10 @@
 // 角色子项 界面验证：角色可展开、子项增删改（无序号）、样式对齐目录
 import { writeFileSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import path from 'node:path';
 import { loginDemo, makeClient, freshBook, selectBookInUi } from './test-utils.mjs';
 
+const CLIENT = 'E:/project/novel/client';
 const PORT = Number(process.env.PORT || 9260);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -52,14 +55,40 @@ async function main() {
   }
   console.log('角色:', chars.map(c => c.name).join(', '));
 
-  // 连到已登录的窗口
-  const list = await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json();
-  const t = list.find(x => x.type === 'page' && x.url.includes('5173'));
-  if (!t) throw new Error(`未找到页面（调试端口 ${PORT}）`);
+  // 连接窗口：优先复用已登录的常驻窗口（PORT，默认 9260），
+  // 没有就自己起一个带调试端口的实例并注入登录态——避免本套件依赖外部窗口存活。
+  let cdp, ownChild = null;
+  const findTarget = async (port) => {
+    try {
+      const list = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
+      return list.find(x => x.type === 'page' && x.url.includes('5173')) || null;
+    } catch { return null; }
+  };
+
+  let t = await findTarget(PORT);
+  if (t) {
+    console.log(`复用已登录窗口（调试端口 ${PORT}）`);
+  } else {
+    console.log(`调试端口 ${PORT} 无窗口，自行启动一个实例`);
+    ownChild = spawn(path.join(CLIENT, 'node_modules/electron/dist/electron.exe'),
+      ['.', `--remote-debugging-port=${PORT}`],
+      { cwd: CLIENT, env: { ...process.env, VITE_DEV_SERVER_URL: 'http://localhost:5173' }, stdio: ['ignore', 'ignore', 'ignore'] });
+    for (let i = 0; i < 40 && !t; i++) { await sleep(500); t = await findTarget(PORT); }
+    if (!t) { ownChild.kill(); throw new Error(`无法连接调试端口 ${PORT}`); }
+  }
+
   const ws = new WebSocket(t.webSocketDebuggerUrl);
   await new Promise((res, rej) => { ws.addEventListener('open', res, { once: true }); ws.addEventListener('error', rej, { once: true }); });
-  const cdp = new CDP(ws);
+  cdp = new CDP(ws);
   await cdp.send('Runtime.enable'); await cdp.send('Page.enable');
+
+  // 注入登录态（自启实例的 localStorage 是空的；复用窗口时这步是幂等的）
+  await cdp.eval(`
+    localStorage.setItem('novel-auth', ${JSON.stringify(JSON.stringify({
+      state: { isAuthenticated: true, accessToken: auth.accessToken, refreshToken: auth.refreshToken, user: auth.user },
+      version: 0 }))});
+    'ok'
+  `);
 
   // 用真实鼠标事件把指针移到匹配元素上（hover 才显示的按钮必须先悬停）
   const hover = async (selectorJs) => {
@@ -350,6 +379,7 @@ async function main() {
 
   console.log(`\n=== 结论: ${pass} 通过 / ${fail} 失败 ===`);
   ws.close();
+  if (ownChild) ownChild.kill();   // 只关掉本套件自己启动的实例，不影响复用中的窗口
   process.exit(fail === 0 ? 0 : 1);
 }
 
