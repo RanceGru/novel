@@ -7,6 +7,8 @@ interface EditorState {
   currentChapterId: string | null;
   chapterContent: string;
   chapterOutline: string;
+  /** 章节纲/当前章节的变化计数，纲树据此刷新「章纲有改动」状态 */
+  outlineVersion: number;
   instruction: string;
   isGenerating: boolean;
   generationError: string | null;
@@ -32,6 +34,8 @@ export const useEditorStore = create<EditorState>()((set) => ({
   currentChapterId: null,
   chapterContent: '',
   chapterOutline: '',
+  /** 章节纲/当前章节的变化计数，纲树据此刷新「章纲有改动」状态 */
+  outlineVersion: 0,
   instruction: '',
   isGenerating: false,
   generationError: null,
@@ -41,10 +45,15 @@ export const useEditorStore = create<EditorState>()((set) => ({
   editorZoom: 1,
 
   setCurrentChapter: (bookId, volumeId, chapterId) =>
-    set({ currentBookId: bookId, currentVolumeId: volumeId, currentChapterId: chapterId }),
+    set((s) => ({
+      currentBookId: bookId, currentVolumeId: volumeId, currentChapterId: chapterId,
+      // 切换章节也应让纲树重新拉取（章纲快照指纹可能不同）
+      outlineVersion: s.outlineVersion + 1,
+    })),
 
   setContent: (content) => set({ chapterContent: content }),
-  setChapterOutline: (outline) => set({ chapterOutline: outline }),
+  // 章节纲（快照）变化时递增版本号，供纲树感知并重新拉取「章纲有改动」状态
+  setChapterOutline: (outline) => set((s) => ({ chapterOutline: outline, outlineVersion: s.outlineVersion + 1 })),
   setInstruction: (instruction) => set({ instruction }),
   setGenerating: (is) => set({ isGenerating: is }),
   setGenerationError: (error) => set({ generationError: error }),

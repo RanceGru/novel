@@ -1,4 +1,8 @@
-// 右侧面板 — 章纲/指令编辑 & AI 生成控制
+// 右侧面板 — 章节纲（快照）/指令编辑 & AI 生成控制
+//
+// 说明：「章节纲（快照）」对应 chapters.chapter_outline —— 生成正文时使用的纲副本。
+// 权威源在纲树的「章纲」（outlines.content）。章纲改动后此处不会被自动覆盖，
+// 只在纲树侧提示「章纲有改动」，由用户决定是否重新生成。
 import { useState } from 'react';
 import { useEditorStore } from '../../stores/editor.store';
 import { useAuthStore } from '../../stores/auth.store';
@@ -120,7 +124,7 @@ export default function RightPanel() {
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
         {rightPanelTab === 'outline' && (
           <>
-            <label className="text-xs font-medium text-text-secondary">章纲编辑</label>
+            <label className="text-xs font-medium text-text-secondary">章节纲（快照）</label>
             <textarea
               className="w-full h-60 p-2 text-sm border border-border-primary rounded bg-bg-primary text-text-primary resize-none focus:outline-none focus:border-brand-primary"
               placeholder="在此编辑章纲...&#10;&#10;章节核心情节：&#10;1.&#10;2.&#10;3."

@@ -1,7 +1,7 @@
-// 作品相关标签页 — 纲树/角色/世界观，格式与分卷一致
+// 作品相关标签页 — 纲树/角色/世界观
 import { useState, useEffect } from 'react';
 import { ChevronRight, ChevronDown } from 'lucide-react';
-import { useOutlineStore } from '../../stores/outline.store';
+import OutlineTree from '../outline/OutlineTree';
 import { useCharacterStore } from '../../stores/character.store';
 import { useWorldbuildingStore } from '../../stores/worldbuilding.store';
 
@@ -27,19 +27,15 @@ export default function RelatedTab({ bookId }: Props) {
   );
 }
 
+/** 纲树区：展开后渲染三分组（大纲 / 卷纲 / 章纲） */
 function OutlineSection({ bookId, expanded, onToggle }: { bookId: string; expanded: boolean; onToggle: () => void }) {
-  const { tree, loadTree } = useOutlineStore();
-  useEffect(() => { if (expanded) loadTree(bookId); }, [expanded, bookId]);
   return (
     <div>
       <button onClick={onToggle} className="w-full pl-10 pr-3 py-1.5 text-left text-sm hover:bg-bg-hover flex items-center gap-1.5 transition-colors">
         {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         <span className="truncate flex-1">纲树</span>
-        <span className="text-text-tertiary text-xs">{tree.length}</span>
       </button>
-      {expanded && tree.map((node: any) => (
-        <div key={node.id} className="pl-14 pr-3 py-1 text-xs text-text-secondary truncate">{node.title}</div>
-      ))}
+      {expanded && <div className="border-l border-border-primary ml-10"><OutlineTree showHeader={false} /></div>}
     </div>
   );
 }

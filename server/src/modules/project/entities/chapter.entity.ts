@@ -27,8 +27,15 @@ export class Chapter {
   @Column({ type: 'text', nullable: true })
   content: string | null;
 
+  // 章节纲（快照）：生成正文时实际使用的纲内容。
+  // 权威源在纲树的 outlines.content；此处是生成那一刻的副本，不会被章纲的后续修改自动覆盖。
   @Column({ type: 'text', nullable: true, name: 'chapter_outline' })
   chapterOutline: string | null;
+
+  // 生成时章纲内容的指纹（sha256 十六进制）。与纲树当前章纲不一致时，说明章纲已改动，
+  // 前端据此提示用户，但不自动改动已生成的正文。
+  @Column({ type: 'varchar', length: 64, nullable: true, name: 'outline_hash' })
+  outlineHash: string | null;
 
   @Column({ type: 'text', nullable: true })
   instruction: string | null;
