@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react';
 import { useCharacterStore } from '../../stores/character.store';
 import { useProjectStore } from '../../stores/project.store';
+import { useEditorStore } from '../../stores/editor.store';
 import { ChevronRight, ChevronDown, Plus, Edit3, X } from 'lucide-react';
 import ItemContextMenu from '../layout/ItemContextMenu';
 
@@ -23,6 +24,8 @@ export default function CharacterList() {
     create, update, remove, createSection, updateSection, deleteSection,
   } = useCharacterStore();
   const { currentBook } = useProjectStore();
+  /** 点击子项 → 在中间编辑器里编辑内容 */
+  const selectDoc = useEditorStore((s) => s.selectDoc);
   const [editing, setEditing] = useState<any>(null);
   const [showNew, setShowNew] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -133,7 +136,12 @@ export default function CharacterList() {
               <div>
                 {kids.map(s => (
                   <div key={s.id} data-char-row="section" data-section-id={s.id} data-section-title={s.title}
-                    className="group flex items-center gap-1 pl-10 pr-3 py-0.5 hover:bg-bg-hover text-text-secondary"
+                    className="group flex items-center gap-1 pl-10 pr-3 py-0.5 hover:bg-bg-hover text-text-secondary cursor-pointer"
+                    onClick={() => selectDoc({
+                      kind: 'character_section', id: s.id, title: s.title,
+                      content: s.content || '', editableTitle: false,
+                    })}
+                    title="点击在中间编辑器里编辑内容"
                     onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, s }); }}>
                     {renameSection?.id === s.id ? (
                       <input autoFocus value={renameSection.title} placeholder="子项标题"

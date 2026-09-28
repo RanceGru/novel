@@ -122,25 +122,32 @@ async function main() {
   check('无展开/收起（无 toggle 控件）', bookRow.found && !bookRow.角色.some(r => r.includes('toggle')));
   check('无新增/删除按钮', bookRow.found && !bookRow.角色.some(r => ['add-volume', 'add-chapter', 'delete'].includes(r)));
 
+  // 点击大纲：现在改为送进中间条目编辑器（不再就地展开输入框）
   await cdp.eval(`(() => { const r=document.querySelector('[data-outline-row="book"]'); if(r) r.click(); return 'ok'; })()`);
-  await sleep(1000);
-  const ta = await cdp.eval(`(() => { const t=document.querySelector('textarea[placeholder^="在此撰写全书大纲"]'); return t ? { 存在:true, 值:t.value } : { 存在:false }; })()`);
-  check('点击后就地出现编辑框并预填内容', ta.存在 && ta.值 === '全书总纲内容QWE', JSON.stringify(ta));
+  await sleep(1500);
+  const ta = await cdp.eval(`
+    (() => {
+      const t=document.querySelector('[data-role="item-content"]');
+      const title=document.querySelector('[data-role="item-title"]');
+      return { 存在:!!t, 值:t?t.value:null, 标题:title?(title.value!==undefined?title.value:title.textContent):null };
+    })()
+  `);
+  check('点击大纲后进入中间条目编辑器并预填内容', ta.存在 && ta.值 === '全书总纲内容QWE', JSON.stringify(ta));
+  check('编辑器标题为「大纲」', ta.标题 === '大纲', JSON.stringify(ta.标题));
   await cdp.eval(`
     (() => {
-      const t=document.querySelector('textarea[placeholder^="在此撰写全书大纲"]');
+      const t=document.querySelector('[data-role="item-content"]');
       if(!t) return 'no-ta';
       const s=Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype,'value').set;
       s.call(t,'全书总纲内容QWE-已改'); t.dispatchEvent(new Event('input',{bubbles:true})); return 'ok';
     })()
   `);
   await sleep(300);
-  await cdp.eval(`(() => { const b=[...document.querySelectorAll('button')].find(x=>(x.textContent||'').trim()==='保存'); if(b) b.click(); return 'ok'; })()`);
-  await sleep(2000);
+  await cdp.eval(`(() => { const b=document.querySelector('[data-role="item-save"]'); if(b) b.click(); return 'ok'; })()`);
+  await sleep(2500);
   const savedOutline = (await J('GET', `/books/${book.id}/outlines`)).body.data;
-  check('大纲内容已保存', savedOutline.bookOutline.content === '全书总纲内容QWE-已改');
-  check('保存后编辑框收起',
-    !(await cdp.eval(`(() => !!document.querySelector('textarea[placeholder^="在此撰写全书大纲"]'))()`)));
+  check('大纲内容已保存', savedOutline.bookOutline.content === '全书总纲内容QWE-已改',
+    JSON.stringify(savedOutline.bookOutline.content));
 
   // ===== ③ 右键菜单（与目录的分卷/章节菜单一致）=====
   console.log('\n【③ 右键菜单】');

@@ -6,6 +6,7 @@ import CharacterList, { OPEN_NEW_CHARACTER_EVENT } from '../characters/Character
 import ItemContextMenu from './ItemContextMenu';
 import { useCharacterStore } from '../../stores/character.store';
 import { useWorldbuildingStore } from '../../stores/worldbuilding.store';
+import { useEditorStore } from '../../stores/editor.store';
 
 interface Props { bookId: string; }
 
@@ -82,6 +83,8 @@ const FIXED_WORLD_CATEGORIES = ['era', 'society', 'power_system', 'politics', 'e
 
 function WorldSection({ bookId, expanded, onToggle }: { bookId: string; expanded: boolean; onToggle: () => void }) {
   const { settings, loadSettings, create, update, remove } = useWorldbuildingStore();
+  /** 点击条目 → 在中间编辑器里编辑内容 */
+  const selectDoc = useEditorStore((s) => s.selectDoc);
   useEffect(() => { if (expanded) loadSettings(bookId); }, [expanded, bookId]);
 
   /** 新建条目的草稿标题（像新增章节那样，先起名再确认落库） */
@@ -152,7 +155,12 @@ function WorldSection({ bookId, expanded, onToggle }: { bookId: string; expanded
             const renaming = renameItem?.id === s.id;
             return (
               <div key={s.id} data-world-row={isFixed ? 'fixed' : 'item'} data-world-title={s.title}
-                className="group pl-14 pr-3 py-1 text-xs text-text-secondary hover:bg-bg-hover flex items-center gap-1.5 transition-colors"
+                className="group pl-14 pr-3 py-1 text-xs text-text-secondary hover:bg-bg-hover flex items-center gap-1.5 transition-colors cursor-pointer"
+                onClick={() => selectDoc({
+                  kind: 'world_setting', id: s.id, title: s.title,
+                  content: s.content || '', editableTitle: false,
+                })}
+                title="点击在中间编辑器里编辑内容"
                 onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, s }); }}>
                 {renaming ? (
                   // 断言非空：renaming 为真时 renameItem 必然存在（TS 不会跨表达式窄化）

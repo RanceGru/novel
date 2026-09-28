@@ -84,32 +84,36 @@ async function main() {
   check('固定条目为 7 个', fixed.length === 7, `count=${fixed.length}`);
   check('标题与默认一致', fixed.map((x) => x.标题).join(',') === FIXED_TITLES.join(','), fixed.map((x) => x.标题).join(','));
   check('固定条目没有展开箭头', fixed.every((x) => !x.含箭头));
-  check('固定条目不可点击', fixed.every((x) => !x.可点击类));
+  check('固定条目可点击（点击进中间编辑器）', fixed.every((x) => x.可点击类));
 
-  // 点一下固定条目，仍不应出现输入框
+  // 点一下固定条目：现在应在中间编辑器里打开（左栏本身不再出现输入框）
   await cdp.eval(`
     (() => {
       const r=document.querySelector('[data-world-row="fixed"][data-world-title="力量体系"]');
       if(!r) return 'not-found';
-      r.click(); r.dispatchEvent(new MouseEvent('click',{bubbles:true}));
+      r.click();
       return 'clicked';
     })()
   `);
-  await sleep(1200);
+  await sleep(1500);
   // 注意作用域：右侧「章纲（快照）」面板本来就有文本域，不能统计全页
   const afterClick = await cdp.eval(`
     (() => {
       const header=document.querySelector('[data-role="world-header"]');
       const scope=header ? header.parentElement : document.body;
+      const item=document.querySelector('[data-role="item-content"]');
+      const title=document.querySelector('[data-role="item-title"]');
       return {
         相关区内文本域: scope.querySelectorAll('textarea').length,
-        有力量体系输入提示: !!scope.querySelector('textarea[placeholder*="力量体系"]'),
+        中间编辑器已打开: !!item,
+        编辑器标题: title ? (title.value !== undefined ? title.value : title.textContent) : null,
       };
     })()
   `);
   console.log('   点击固定条目后:', JSON.stringify(afterClick));
-  check('点击固定条目不出现文本输入框',
-    afterClick.相关区内文本域 === 0 && !afterClick.有力量体系输入提示);
+  check('点击固定条目后左栏内不出现输入框', afterClick.相关区内文本域 === 0);
+  check('点击固定条目在中间编辑器打开', afterClick.中间编辑器已打开 && afterClick.编辑器标题 === '力量体系',
+    JSON.stringify(afterClick));
 
   // ② 新增草稿行
   console.log('\n【② 点新增信息】');
@@ -180,7 +184,8 @@ async function main() {
   `);
   console.log('   自建条目:', JSON.stringify(same.自建));
   check('自建条目也没有展开箭头', same.自建.every((x) => !x.含箭头));
-  check('自建条目不可点击', same.自建.every((x) => !x.可点击类));
+  // 按需求：点击条目是「送进中间编辑器」，所以行本身是 cursor-pointer 可点的
+  check('条目可点击（点击进中间编辑器）', same.固定.every((x) => x.可点击类) && same.自建.every((x) => x.可点击类));
   // 按需求：右侧只有删除按键（重命名/删除走右键菜单），不能有行内重命名按键
   check('自建条目只有删除按键', same.自建.every((x) => x.有操作按钮 === 1), JSON.stringify(same.自建.map((x) => x.有操作按钮)));
   const styleEq = same.固定.length && same.自建.length
@@ -189,25 +194,30 @@ async function main() {
   check('自建条目与固定条目的 class/内边距一致', !!styleEq,
     `固定=${same.固定[0]?.类名} | 自建=${same.自建[0]?.类名}`);
 
-  // 点自建条目也不应出现输入框（作用域只看「相关」区域，右侧章纲面板本来就有文本域）
+  // 点自建条目：同样应在中间编辑器打开（左栏内不出现输入框）
   await cdp.eval(`
     (() => {
       const r=[...document.querySelectorAll('[data-world-row="item"]')].find(x=>x.getAttribute('data-world-title')==='其他补充1');
       if(!r) return 'not-found';
-      r.click(); r.dispatchEvent(new MouseEvent('click',{bubbles:true}));
+      r.click();
       return 'clicked';
     })()
   `);
-  await sleep(1200);
+  await sleep(1500);
   const afterItemClick = await cdp.eval(`
     (() => {
       const header=document.querySelector('[data-role="world-header"]');
       const scope=header ? header.parentElement : document.body;
-      return { 相关区内文本域: scope.querySelectorAll('textarea').length };
+      const title=document.querySelector('[data-role="item-title"]');
+      return {
+        相关区内文本域: scope.querySelectorAll('textarea').length,
+        编辑器标题: title ? (title.value !== undefined ? title.value : title.textContent) : null,
+      };
     })()
   `);
   console.log('   点击自建条目后:', JSON.stringify(afterItemClick));
-  check('点击自建条目也不出现文本输入框', afterItemClick.相关区内文本域 === 0);
+  check('点击自建条目后左栏内不出现输入框', afterItemClick.相关区内文本域 === 0);
+  check('点击自建条目在中间编辑器打开', afterItemClick.编辑器标题 === '其他补充1', JSON.stringify(afterItemClick));
 
   ws.close();
   console.log(`\n=== 结论: ${pass} 通过 / ${fail} 失败 ===`);

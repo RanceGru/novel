@@ -32,16 +32,16 @@ const STATE_UI: Record<OutlineSyncState, { label: string; className: string } | 
 export default function OutlineTree({ showHeader = true }: { showHeader?: boolean } = {}) {
   const {
     bookOutline, volumes, chapters, loading, error,
-    loadGroups, saveBookOutline, createNode, updateNode, deleteNode,
+    loadGroups, createNode, updateNode, deleteNode,
     generateChapter, generateVolume, clearError,
   } = useOutlineStore();
   const { currentBook } = useProjectStore();
   // 章节纲（快照）或当前章节变化时递增：用于自动刷新「章纲有改动」提示
   const outlineVersion = useEditorStore((s) => s.outlineVersion);
+  /** 点击纲条目 → 在中间编辑器里编辑其内容 */
+  const selectDoc = useEditorStore((s) => s.selectDoc);
 
   const [expanded, setExpanded] = useState<Record<string, boolean>>({ detailed: true });
-  const [editingOutline, setEditingOutline] = useState(false);
-  const [outlineDraft, setOutlineDraft] = useState('');
   /** 新建卷纲草稿：左编号 + 右标题（与目录的新建分卷一致） */
   const [newVolume, setNewVolume] = useState<{ number: number | null; title: string } | null>(null);
   /** 新建章纲草稿：parentId 为所属卷纲 */
@@ -107,6 +107,21 @@ export default function OutlineTree({ showHeader = true }: { showHeader?: boolea
     setNewChapter(null);
   };
 
+  /** 在中间编辑器打开某个纲条目（大纲/卷纲/章纲都只有 title+content） */
+  const openDoc = (node: OutlineNode) => {
+    // 系统条目「第N卷卷纲」是卷纲正文，标题固定，内容可编辑
+    const editableTitle = !node.isSystem && node.level !== 'book_outline';
+    selectDoc({
+      kind: node.level === 'volume_outline' ? 'volume_outline'
+        : node.level === 'chapter_outline' ? 'chapter_outline'
+        : 'book_outline',
+      id: node.id,
+      title: node.level === 'book_outline' ? '大纲' : node.title,
+      content: node.content || '',
+      editableTitle,
+    });
+  };
+
   // ====== 右键菜单动作（与目录的分卷/章节菜单一一对应）======
   /** 开始重命名（卷纲/章纲共用） */
   const startRename = (node: OutlineNode) => {
@@ -139,31 +154,15 @@ export default function OutlineTree({ showHeader = true }: { showHeader?: boolea
       )}
 
       {/* ===================== 大纲：等同目录里的一个普通章节行 ===================== */}
+      {/* 点击不再就地展开编辑，而是送进中间编辑器（见 openDoc） */}
       <div data-outline-row="book" className="w-full pl-8 pr-3 py-1 text-left text-sm hover:bg-bg-hover flex items-center gap-1.5 text-text-secondary group cursor-pointer"
-        onClick={() => { if (bookOutline && !editingOutline) { setOutlineDraft(bookOutline.content || ''); setEditingOutline(true); } }}
-        title="点击编辑大纲内容">
+        onClick={() => { if (bookOutline) openDoc(bookOutline); }}
+        title="点击在中间编辑器里编辑大纲内容">
         <FileText size={12} className="shrink-0 text-text-tertiary" />
         <span className="truncate flex-1">大纲</span>
         {bookOutline?.content?.trim() && <span className="shrink-0 text-text-tertiary text-xs">已填写</span>}
         <Edit3 size={12} className="hidden group-hover:inline shrink-0 text-text-tertiary" />
       </div>
-
-      {/* 大纲编辑态：输入框就地展开在行下方（与章节重命名的缩进一致） */}
-      {bookOutline && editingOutline && (
-        <div className="pl-10 pr-3 pb-2">
-          <textarea autoFocus value={outlineDraft} onChange={e => setOutlineDraft(e.target.value)}
-            rows={8} placeholder="在此撰写全书大纲…"
-            className="w-full p-1.5 text-xs border border-brand-primary rounded bg-bg-primary resize-y" />
-          <div className="flex gap-2 mt-1">
-            <button className="text-brand-primary hover:underline"
-              onClick={() => run(async () => { await saveBookOutline(bookId, outlineDraft); setEditingOutline(false); })}>
-              保存
-            </button>
-            <button className="text-text-tertiary hover:text-text-primary"
-              onClick={() => setEditingOutline(false)}>取消</button>
-          </div>
-        </div>
-      )}
 
       {/* ===================== 细纲：结构与目录一致 ===================== */}
       <div data-outline-row="detailed"
@@ -222,6 +221,7 @@ export default function OutlineTree({ showHeader = true }: { showHeader?: boolea
                   onRenameCancel={() => setRenamingId(null)}
                   onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ kind: 'volume', x: e.clientX, y: e.clientY, node: v }); }}
                   onAddChapter={() => startNewChapter(v.id)}
+                  onOpen={() => openDoc(v)}
                 />
 
                 {/* 章纲行：样式对齐目录的章节行；行内保留删除，其余走右键菜单 */}
@@ -236,6 +236,7 @@ export default function OutlineTree({ showHeader = true }: { showHeader?: boolea
                         onDelete={() => {
                           if (confirm(`确认删除「${c.title}」？`)) run(() => deleteNode(bookId, c.id));
                         }}
+                        onOpen={() => openDoc(c)}
                       />
                     ))}
                     {newChapter?.parentId === v.id && (
@@ -296,7 +297,7 @@ export default function OutlineTree({ showHeader = true }: { showHeader?: boolea
 }
 
 /** 卷纲行 —— 类名与目录的分卷行保持一致；行内保留「新建章纲」，其余操作走右键菜单 */
-function VolumeRow({ node, index, expanded, onToggle, renaming, onRenameSubmit, onRenameCancel, onContextMenu, onAddChapter }: {
+function VolumeRow({ node, index, expanded, onToggle, renaming, onRenameSubmit, onRenameCancel, onContextMenu, onAddChapter, onOpen }: {
   node: OutlineNode; index: number; expanded: boolean;
   onToggle: () => void;
   renaming: boolean;
@@ -304,6 +305,8 @@ function VolumeRow({ node, index, expanded, onToggle, renaming, onRenameSubmit, 
   onRenameCancel: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
   onAddChapter: () => void;
+  /** 在中间编辑器打开该卷纲 */
+  onOpen: () => void;
 }) {
   const [draft, setDraft] = useState(node.title);
 
@@ -318,10 +321,12 @@ function VolumeRow({ node, index, expanded, onToggle, renaming, onRenameSubmit, 
   }
 
   return (
-    <button data-outline-row="volume"
-      className="w-full pl-10 pr-3 py-1.5 text-left text-sm hover:bg-bg-hover flex items-center gap-1.5 transition-colors group"
+    <div data-outline-row="volume"
+      className="w-full pl-10 pr-3 py-1.5 text-left text-sm hover:bg-bg-hover flex items-center gap-1.5 transition-colors group cursor-pointer"
       onClick={onToggle}
-      onContextMenu={onContextMenu}>
+      onDoubleClick={onOpen}
+      onContextMenu={onContextMenu}
+      title="点击展开/收起；双击在中间编辑器编辑内容">
       {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
       <span className="truncate flex-1">第{index}卷 {node.title}</span>
       {/* 与目录的分卷行同位：hover 出「新建章纲」 */}
@@ -329,18 +334,25 @@ function VolumeRow({ node, index, expanded, onToggle, renaming, onRenameSubmit, 
         className="hidden group-hover:inline text-text-tertiary hover:text-text-primary text-xs" title="新建章纲">
         <FilePlus size={13} />
       </button>
-    </button>
+      {/* 与「明细」入口并行：显式按钮打开中间编辑器，避免只能靠双击发现 */}
+      <button data-role="open-doc" onClick={(e: any) => { e.stopPropagation(); onOpen(); }}
+        className="hidden group-hover:inline text-text-tertiary hover:text-text-primary text-xs" title="编辑卷纲内容">
+        <Edit3 size={13} />
+      </button>
+    </div>
   );
 }
 
 /** 章纲行 —— 类名与目录的章节行保持一致；行内保留「删除」，其余操作走右键菜单 */
-function ChapterRow({ node, renaming, onRenameSubmit, onRenameCancel, onContextMenu, onDelete }: {
+function ChapterRow({ node, renaming, onRenameSubmit, onRenameCancel, onContextMenu, onDelete, onOpen }: {
   node: OutlineNode;
   renaming: boolean;
   onRenameSubmit: (title: string) => void;
   onRenameCancel: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
   onDelete: () => void;
+  /** 在中间编辑器打开该章纲 */
+  onOpen: () => void;
 }) {
   const [draft, setDraft] = useState(node.title);
   const stateUi = node.syncState ? STATE_UI[node.syncState] : null;
@@ -356,8 +368,10 @@ function ChapterRow({ node, renaming, onRenameSubmit, onRenameCancel, onContextM
 
   return (
     <div data-outline-row="chapter"
-      className="flex items-center gap-1 pl-16 pr-3 py-1 text-sm hover:bg-bg-hover text-text-secondary group"
-      onContextMenu={onContextMenu}>
+      className="flex items-center gap-1 pl-16 pr-3 py-1 text-sm hover:bg-bg-hover text-text-secondary group cursor-pointer"
+      onClick={onOpen}
+      onContextMenu={onContextMenu}
+      title="点击在中间编辑器里编辑章纲内容">
       <span className="truncate flex-1">
         {node.title}
         {node.isSystem && <span className="ml-1 text-xs text-text-tertiary">（卷纲）</span>}
