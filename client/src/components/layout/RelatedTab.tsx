@@ -1,27 +1,10 @@
 // 作品相关标签页 — 纲树/角色/世界观
 import { useState, useEffect } from 'react';
-import { ChevronRight, ChevronDown, Plus } from 'lucide-react';
+import { ChevronRight, ChevronDown, Plus, Edit3 } from 'lucide-react';
 import OutlineTree from '../outline/OutlineTree';
 import CharacterList, { OPEN_NEW_CHARACTER_EVENT } from '../characters/CharacterList';
 import { useCharacterStore } from '../../stores/character.store';
 import { useWorldbuildingStore } from '../../stores/worldbuilding.store';
-
-const WORLD_CATEGORIES = [
-  { key: 'era', label: '时代信息' }, { key: 'society', label: '社会背景' },
-  { key: 'power_system', label: '力量体系' }, { key: 'politics', label: '政治体系' },
-  { key: 'economy', label: '经济体系' }, { key: 'culture', label: '文化体系' },
-  { key: 'geography', label: '地理位置' },
-];
-
-/** 从「其他补充N」这类标题里取最大序号，用于新条目的默认命名 */
-function nextSupplementNumber(titles: string[]): number {
-  let max = 0;
-  for (const t of titles) {
-    const m = /^其他补充(\d+)$/.exec((t || '').trim());
-    if (m) max = Math.max(max, Number(m[1]));
-  }
-  return max + 1;
-}
 
 interface Props { bookId: string; }
 
@@ -94,18 +77,36 @@ function CharacterSection({ bookId, expanded, onToggle }: { bookId: string; expa
 }
 
 function WorldSection({ bookId, expanded, onToggle }: { bookId: string; expanded: boolean; onToggle: () => void }) {
-  const { settings, loadSettings, create } = useWorldbuildingStore();
+  const { settings, loadSettings, create, update } = useWorldbuildingStore();
   useEffect(() => { if (expanded) loadSettings(bookId); }, [expanded, bookId]);
 
+  /** 展开查看/编辑内容的条目 id，以及该条目的草稿内容 */
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [draft, setDraft] = useState('');
+
   /**
-   * 新增一条世界观信息：归类到 other，默认命名「其他补充1、2、3…」。
+   * 新增一条信息：默认命名「其他补充」（同名即可，与默认自带的那个一样），
+   * 排在所有现有条目之后（sortOrder 由后端分配）。
    * 收起状态下先展开再创建，避免用户点了没反应。
    */
-  const addSupplement = async () => {
-    const n = nextSupplementNumber(settings.map((s: any) => s.title));
-    await create(bookId, { category: 'other', title: `其他补充${n}`, content: '' });
+  const addSetting = async () => {
+    await create(bookId, { category: 'other', title: '其他补充', content: '' });
     if (!expanded) onToggle();
   };
+
+  const openItem = (s: any) => {
+    if (openId === s.id) { setOpenId(null); return; }
+    setOpenId(s.id);
+    setDraft(s.content || '');
+  };
+  const saveItem = async (id: string) => {
+    await update(bookId, id, { content: draft });
+    setOpenId(null);
+  };
+
+  // 按 sortOrder 排列：默认自带的 8 个条目在前，新增的在后
+  const items = [...settings].sort((a, b) =>
+    (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
 
   return (
     <div>
@@ -116,7 +117,7 @@ function WorldSection({ bookId, expanded, onToggle }: { bookId: string; expanded
         {expanded ? <ChevronDown size={12} className="text-text-tertiary" /> : <ChevronRight size={12} className="text-text-tertiary" />}
         <span className="text-text-secondary flex-1">世界观</span>
         <button data-role="add-world-setting"
-          onClick={(e) => { e.stopPropagation(); addSupplement(); }}
+          onClick={(e) => { e.stopPropagation(); addSetting(); }}
           className="inline-flex shrink-0 rounded hover:bg-bg-active text-text-tertiary hover:text-text-primary transition-colors p-0.5"
           title="新增信息">
           <Plus size={15} />
@@ -124,31 +125,39 @@ function WorldSection({ bookId, expanded, onToggle }: { bookId: string; expanded
       </div>
       {expanded && (
         <div>
-          {/* 固定分类：只显示该分类已有条目的分组 */}
-          {WORLD_CATEGORIES.map(cat => {
-            const items = settings.filter((s: any) => s.category === cat.key);
-            if (!items.length) return null;
+          {/* 条目即「可填写的一项」，下面没有更深的子项；点行展开即可填写内容 */}
+          {items.map((s: any) => {
+            const isOpen = openId === s.id;
             return (
-              <div key={cat.key}>
-                <div className="pl-14 pr-3 py-1 text-xs text-text-secondary flex items-center gap-1">
-                  <span className="truncate flex-1">{cat.label}</span>
-                  <span className="text-text-tertiary text-[10px]">{items.length}</span>
+              <div key={s.id}>
+                <div data-world-row="item" data-world-title={s.title}
+                  className="group w-full pl-14 pr-3 py-1 text-xs text-text-secondary hover:bg-bg-hover flex items-center gap-1.5 transition-colors cursor-pointer"
+                  onClick={() => openItem(s)}>
+                  {isOpen ? <ChevronDown size={12} className="text-text-tertiary" /> : <ChevronRight size={12} className="text-text-tertiary" />}
+                  <span className="truncate flex-1">{s.title}</span>
+                  <span className="text-text-tertiary text-[10px] shrink-0">
+                    {s.content?.trim() ? `${s.content.trim().length}字` : '空'}
+                  </span>
+                  <Edit3 size={11} className="hidden group-hover:inline shrink-0 text-text-tertiary" />
                 </div>
-                {items.map((s: any) => (
-                  <div key={s.id} className="pl-20 pr-3 py-0.5 text-text-tertiary text-xs truncate">{s.title}</div>
-                ))}
+                {isOpen && (
+                  <div className="pl-16 pr-3 pb-2">
+                    <textarea autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} rows={5}
+                      placeholder={`填写「${s.title}」的内容…`}
+                      className="w-full p-1.5 text-xs border border-brand-primary rounded bg-bg-primary resize-y" />
+                    <div className="flex gap-2 mt-1">
+                      <button className="text-brand-primary hover:underline"
+                        onClick={() => saveItem(s.id)}>保存</button>
+                      <button className="text-text-tertiary hover:text-text-primary"
+                        onClick={() => setOpenId(null)}>取消</button>
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}
 
-          {/* 「其他补充」不再单独占一行分组标题（已从 WORLD_CATEGORIES 移除），
-              新增的条目直接列在下面，命名即「其他补充1、2、3…」 */}
-          {settings.filter((s: any) => s.category === 'other').map((s: any) => (
-            <div key={s.id} data-role="world-other-item"
-              className="pl-14 pr-3 py-0.5 text-text-secondary text-xs truncate">{s.title}</div>
-          ))}
-
-          {settings.length === 0 && (
+          {items.length === 0 && (
             <div className="pl-14 pr-3 py-1 text-text-tertiary text-xs">暂无信息，点击右侧 + 新增</div>
           )}
         </div>

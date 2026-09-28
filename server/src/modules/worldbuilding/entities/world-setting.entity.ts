@@ -1,5 +1,5 @@
 // 世界观设定实体 — world_settings 表
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
 import { bigintTransformer } from '../../../common/utils/transformers';
 
 @Entity('world_settings')
@@ -18,6 +18,11 @@ export class WorldSetting {
 
   @Column({ type: 'text', nullable: true })
   content: string | null;
+
+  /** 展示顺序：默认自带的 8 个条目按固定顺序排在前面，新增的排在其后 */
+  @Index('idx_world_settings_book_sort')
+  @Column({ type: 'integer', default: 0, name: 'sort_order' })
+  sortOrder: number;
 
   @Column({ type: 'integer', default: 1, name: 'content_version' })
   contentVersion: number;

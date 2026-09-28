@@ -2,7 +2,10 @@
 import { create } from 'zustand';
 import { apiClient } from '../services/api.service';
 
-interface WorldSetting { id: string; bookId: string; category: string; title: string; content: string | null; }
+interface WorldSetting {
+  id: string; bookId: string; category: string; title: string;
+  content: string | null; sortOrder: number;
+}
 
 interface WBState {
   settings: WorldSetting[];

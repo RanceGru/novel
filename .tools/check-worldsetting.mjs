@@ -1,12 +1,15 @@
-// 验证「世界观」区域：
-//   ① 标题行右侧有「新增信息」按钮，位置与角色行一致
-//   ② 点按钮按 其他补充1、2、3… 递增命名，并真实落库（category=other）
-//   ③ 「其他补充」不再作为一行分组标题出现
-//   ④ 之前 404 的 store 路由（update/remove）已修好
+// 验证「世界观」区域（条目即内容，无下级）：
+//   ① 默认自带 8 个条目，顺序固定：时代信息/社会背景/力量体系/政治体系/经济体系/文化体系/地理位置/其他补充
+//   ② 标题行右侧有「新增信息」按钮（样式/尺寸与角色行一致）
+//   ③ 点新增 → 默认命名「其他补充」，排在最后
+//   ④ 条目可点开填写内容并保存（这是「可填写的项」，不是分组标题）
+//   ⑤ 不存在分组标题这一层（原先的「力量体系 > 武道境界」两层结构已取消）
 import { loginDemo, makeClient, freshBook, selectBookInUi, openRelatedInUi } from './test-utils.mjs';
 
 const PORT = Number(process.env.PORT || 9260);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+const DEFAULT_TITLES = ['时代信息', '社会背景', '力量体系', '政治体系', '经济体系', '文化体系', '地理位置', '其他补充'];
 
 let pass = 0, fail = 0;
 const check = (l, c, extra = '') => { console.log(`   ${c ? '✓' : '✗'} ${l}${extra ? ' ' + extra : ''}`); c ? pass++ : fail++; };
@@ -43,13 +46,12 @@ const clickSpan = (text) => `
   })()
 `;
 
+const rows = `[...document.querySelectorAll('[data-world-row="item"]')].map(x=>x.getAttribute('data-world-title'))`;
+
 async function main() {
   const auth = await loginDemo();
   const { J } = makeClient(auth.accessToken);
   const book = await freshBook(J, '世界观验证书');
-
-  // 先放一条固定分类的条目，确认「有内容才显示分组」的行为
-  await J('POST', `/books/${book.id}/world-settings`, { category: 'geography', title: '边城地图', content: '山川地形' });
 
   const list = await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json();
   const t = list.find((x) => x.type === 'page' && x.url.includes('5173'));
@@ -66,72 +68,115 @@ async function main() {
   console.log('展开相关:', await cdp.eval(openRelatedInUi()));
   await sleep(2000);
   console.log('展开世界观:', await cdp.eval(clickSpan('世界观')));
-  await sleep(2000);
+  await sleep(2500);
 
-  // ① 标题行
-  console.log('\n【① 世界观标题行】');
+  // ① 默认条目
+  console.log('\n【① 默认自带的条目】');
+  const uiRows = await cdp.eval(rows);
+  console.log('   界面条目:', JSON.stringify(uiRows));
+  check('界面显示 8 个默认条目', Array.isArray(uiRows) && uiRows.length === 8, `count=${Array.isArray(uiRows) ? uiRows.length : 'n/a'}`);
+  check('条目顺序与默认一致', Array.isArray(uiRows) && uiRows.join(',') === DEFAULT_TITLES.join(','),
+    Array.isArray(uiRows) ? uiRows.join(',') : '');
+
+  const apiRows = (await J('GET', `/books/${book.id}/world-settings`)).body.data;
+  check('后端也补齐了 8 条', apiRows.length === 8, `count=${apiRows.length}`);
+  check('后端按 sortOrder 升序返回',
+    apiRows.every((s, i) => i === 0 || s.sortOrder >= apiRows[i - 1].sortOrder),
+    apiRows.map((s) => s.sortOrder).join(','));
+
+  // ② 标题行按钮
+  console.log('\n【② 新增信息按钮】');
   const header = await cdp.eval(`
     (() => {
       const h=document.querySelector('[data-role="world-header"]');
-      if(!h) return { found:false };
-      const btn=h.querySelector('[data-role="add-world-setting"]');
-      const r=btn?btn.getBoundingClientRect():null;
-      const hr=h.getBoundingClientRect();
+      const btn=h && h.querySelector('[data-role="add-world-setting"]');
       const charBtn=document.querySelector('[data-role="new-character"]');
-      return {
-        found:true, 文本:(h.textContent||'').trim(), 有按钮:!!btn,
-        按钮在右侧: !!r && r.left > hr.left + hr.width*0.5,
-        按钮标题: btn?btn.title:null,
-        含计数: /\\d/.test((h.textContent||'').trim()),
-        与角色按钮同尺寸: !!btn && !!charBtn
-          ? JSON.stringify({w:Math.round(r.width),h:Math.round(r.height)}) ===
-            JSON.stringify((({width,height})=>({w:Math.round(width),h:Math.round(height)}))(charBtn.getBoundingClientRect()))
-          : null,
-      };
+      if(!h||!btn) return { found:false };
+      const r=btn.getBoundingClientRect(), hr=h.getBoundingClientRect();
+      const round=(x)=>({w:Math.round(x.width),h:Math.round(x.height)});
+      return { found:true, 标题:(h.textContent||'').trim(), 按钮标题:btn.title,
+               按钮在右侧:r.left > hr.left + hr.width*0.5,
+               尺寸与角色按钮一致: charBtn ? JSON.stringify(round(r))===JSON.stringify(round(charBtn.getBoundingClientRect())) : null };
     })()
   `);
   console.log('   标题行:', JSON.stringify(header));
-  check('存在世界观标题行', header.found);
-  check('标题行文本为「世界观」（无计数）', header.文本 === '世界观', JSON.stringify(header.文本));
-  check('右侧有「新增信息」按钮', header.有按钮, header.按钮标题);
+  check('标题行文本为「世界观」（无计数）', header.标题 === '世界观', JSON.stringify(header.标题));
+  check('右侧按钮标题为「新增信息」', header.按钮标题 === '新增信息', header.按钮标题);
   check('按钮位于名称右侧', header.按钮在右侧);
-  check('按钮尺寸与角色行的「新建角色」一致', header.与角色按钮同尺寸 !== false, String(header.与角色按钮同尺寸));
+  check('按钮尺寸与角色行一致', header.尺寸与角色按钮一致 !== false);
 
-  // ② 连点三次 → 其他补充1/2/3
-  console.log('\n【② 新增三条】');
-  for (let i = 1; i <= 3; i++) {
-    await cdp.eval(`(() => { const b=document.querySelector('[data-role="add-world-setting"]'); if(!b) return 'no-btn'; b.click(); return 'clicked'; })()`);
-    await sleep(2200);
-    const api = (await J('GET', `/books/${book.id}/world-settings`)).body.data;
-    const others = api.filter((s) => s.category === 'other').map((s) => s.title);
-    console.log(`   第 ${i} 次点击后 other 条目:`, JSON.stringify(others));
-    check(`第 ${i} 次新增命名为「其他补充${i}」`, others.includes(`其他补充${i}`), JSON.stringify(others));
-  }
+  // ③ 新增 → 默认名「其他补充」，排在最后
+  console.log('\n【③ 点新增】');
+  await cdp.eval(`(() => { const b=document.querySelector('[data-role="add-world-setting"]'); if(!b) return 'no-btn'; b.click(); return 'clicked'; })()`);
+  await sleep(2500);
+  const afterAdd = await cdp.eval(rows);
+  console.log('   新增后界面条目:', JSON.stringify(afterAdd));
+  check('新增了第 9 条', Array.isArray(afterAdd) && afterAdd.length === 9, `count=${Array.isArray(afterAdd) ? afterAdd.length : 'n/a'}`);
+  check('新增条目默认名为「其他补充」', Array.isArray(afterAdd) && afterAdd[8] === '其他补充', String(afterAdd && afterAdd[8]));
+  const apiAfter = (await J('GET', `/books/${book.id}/world-settings`)).body.data;
+  const last = apiAfter[apiAfter.length - 1];
+  check('新增条目已落库且 sortOrder 最大', last.title === '其他补充' && last.sortOrder === Math.max(...apiAfter.map((s) => s.sortOrder)),
+    `title=${last.title} sortOrder=${last.sortOrder}`);
 
-  // ③ 界面上不再有「其他补充」分组标题，条目直接列出
-  const ui = await cdp.eval(`
+  // ④ 点开条目填写内容并保存
+  console.log('\n【④ 条目可填写内容】');
+  await cdp.eval(`
     (() => {
-      const items=[...document.querySelectorAll('[data-role="world-other-item"]')].map(x=>(x.textContent||'').trim());
-      const lines=(document.body.innerText||'').split('\\n').map(s=>s.trim());
-      const catHeaderCount=lines.filter(l=>l==='其他补充').length;
-      const geoHeader=lines.filter(l=>l==='地理位置').length;
-      return { items, catHeaderCount, geoHeader };
+      const r=[...document.querySelectorAll('[data-world-row="item"]')].find(x=>x.getAttribute('data-world-title')==='力量体系');
+      if(!r) return 'not-found'; r.click(); return 'clicked';
     })()
   `);
-  console.log('   界面:', JSON.stringify(ui));
-  check('界面显示了三条其他补充', ui.items.length === 3, JSON.stringify(ui.items));
-  check('没有「其他补充」分组标题', ui.catHeaderCount === 0, `count=${ui.catHeaderCount}`);
-  check('有内容的固定分类（地理位置）仍显示分组', ui.geoHeader >= 1);
+  await sleep(1200);
+  const editorOpen = await cdp.eval(`
+    (() => {
+      const ta=document.querySelector('textarea[placeholder*="力量体系"]');
+      return ta ? { open:true } : { open:false, 有textarea: !!document.querySelector('textarea') };
+    })()
+  `);
+  console.log('   编辑器:', JSON.stringify(editorOpen));
+  check('点条目展开出可填写区域', editorOpen.open);
 
-  // ④ store 路由（此前 404）
-  console.log('\n【③ 修好的 store 路由】');
-  const target = (await J('GET', `/books/${book.id}/world-settings`)).body.data.find((s) => s.category === 'other');
-  const upd = await J('PATCH', `/books/${book.id}/world-settings/${target.id}`, { title: '其他补充1（改名验证）' });
-  check('PATCH 走 /books/:bookId/world-settings/:id 成功', upd.status === 200, `status=${upd.status}`);
-  const del = await J('DELETE', `/books/${book.id}/world-settings/${target.id}`);
-  check('DELETE 走同一路径成功', del.status === 200, `status=${del.status}`);
-  const after = (await J('GET', `/books/${book.id}/world-settings`)).body.data;
-  check('删除后条目减少', after.length === 3, `count=${after.length}`);
+  await cdp.eval(`
+    (() => {
+      const ta=document.querySelector('textarea[placeholder*="力量体系"]');
+      if(!ta) return 'no-ta';
+      const set=Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype,'value').set;
+      set.call(ta,'共九境：炼体、开脉、凝气…');
+      ta.dispatchEvent(new Event('input',{bubbles:true}));
+      return 'ok';
+    })()
+  `);
+  await sleep(400);
+  await cdp.eval(`(() => { const b=[...document.querySelectorAll('button')].find(x=>/^保存$/.test((x.textContent||'').trim())); if(!b) return 'no-save'; b.click(); return 'clicked'; })()`);
+  await sleep(2500);
+  const saved = (await J('GET', `/books/${book.id}/world-settings`)).body.data.find((s) => s.title === '力量体系');
+  check('内容已落库', !!saved && (saved.content || '').includes('共九境'), JSON.stringify((saved || {}).content));
+
+  // ⑤ 不存在分组标题层
+  // 判据：只比较 8 个默认条目的「出现次数」会被步骤③新增的同名第 9 条干扰，
+  // 所以改为直接断言 —— 这些名字各自只对应一个条目行（data-world-row="item"），
+  // 界面上不存在「属于条目行之外的同名文本」（那才是分组标题）。
+  console.log('\n【⑤ 无分组层】');
+  const grouping = await cdp.eval(`
+    (() => {
+      const titles=${JSON.stringify(DEFAULT_TITLES)};
+      const rowTitles=[...document.querySelectorAll('[data-world-row="item"]')].map(x=>x.getAttribute('data-world-title'));
+      const out={};
+      for (const t of titles) {
+        const rowCount=rowTitles.filter(x=>x===t).length;
+        // 界面上等于该标题的整行数量（含非条目行）
+        const lineCount=(document.body.innerText||'').split('\\n').map(s=>s.trim()).filter(l=>l===t).length;
+        out[t]={ 条目行:rowCount, 整行:lineCount };
+      }
+      return { out, 条目行总数: rowTitles.length };
+    })()
+  `);
+  console.log('   各默认条目:', JSON.stringify(grouping.out));
+  console.log('   条目行总数:', grouping.条目行总数);
+  const noGroupHeader = Object.entries(grouping.out).every(([, v]) => v.条目行 >= 1 && v.整行 <= v.条目行);
+  check('默认条目都渲染成条目行', DEFAULT_TITLES.every((t) => grouping.out[t].条目行 >= 1));
+  check('没有条目行之外的同名标题（即无分组标题层）', noGroupHeader,
+    JSON.stringify(grouping.out));
 
   ws.close();
   console.log(`\n=== 结论: ${pass} 通过 / ${fail} 失败 ===`);
