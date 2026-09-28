@@ -82,6 +82,19 @@ export default defineConfig({
     electron([
       {
         entry: 'electron/main.ts',
+        // 不在 dev 模式自动拉起 Electron 窗口。
+        //
+        // 原因有两个：
+        //  ① 插件只固定传 ['.', '--no-sandbox']，没法加 --remote-debugging-port，
+        //     而我们做界面验证/注入登录态需要调试端口，所以窗口一直由
+        //     .tools/restart-and-login.mjs 另外启动 —— 两处都拉就会同时出现两个窗口，
+        //     一个停在登录页、一个在主界面，看起来就像「登录后登录界面还在」。
+        //  ② 插件内部有 `process.electronApp.once('exit', process.exit)`：
+        //     窗口一关就把 Vite 进程一起结束掉，连带让后台任务以非 0 退出。
+        //
+        // 主进程代码改动后不再自动重启窗口（渲染进程仍有 HMR）；
+        // 需要重启时手动执行：node .tools/restart-and-login.mjs
+        onstart() { /* 交给 .tools/restart-and-login.mjs 启动唯一的窗口 */ },
         vite: {
           build: {
             outDir: 'dist-electron',
