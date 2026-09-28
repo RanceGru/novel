@@ -1,12 +1,13 @@
 // 角色列表组件
 //
 // 结构：角色行可展开，展开后显示其「子项」（类似分卷下的章节）。
-// 与分卷/章节的差异：子项不带序号，命名就是普通标题。
-// 交互沿用纲树/目录的习惯：行内 hover 出「+」新建子项，子项行 hover 出删除。
+// 交互与章节一致：行内 hover 出「+」新建子项（先命名再确认），
+// 子项行 hover 只出删除按键，重命名/删除走右键菜单。
 import { useEffect, useState } from 'react';
 import { useCharacterStore } from '../../stores/character.store';
 import { useProjectStore } from '../../stores/project.store';
 import { ChevronRight, ChevronDown, Plus, Edit3, X } from 'lucide-react';
+import ItemContextMenu from '../layout/ItemContextMenu';
 
 /**
  * 「新建角色」的触发事件名。
@@ -29,6 +30,8 @@ export default function CharacterList() {
   const [newSection, setNewSection] = useState<{ characterId: string; title: string } | null>(null);
   /** 正在重命名的子项 id 与草稿标题 */
   const [renameSection, setRenameSection] = useState<{ id: string; title: string } | null>(null);
+  /** 子项右键菜单位置与目标子项 */
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; s: any } | null>(null);
 
   useEffect(() => {
     if (currentBook) loadCharacters(currentBook.id);
@@ -43,6 +46,20 @@ export default function CharacterList() {
 
   if (!currentBook) return null;
   const bookId = currentBook.id;
+
+  /** 默认名「子项N」：N 取该角色下同类标题的最大序号 +1（与新增章节的做法一致） */
+  const nextSectionTitle = (characterId: string) => {
+    let maxNo = 0;
+    for (const s of sections.filter((x) => x.characterId === characterId)) {
+      const m = /^子项(\d+)$/.exec((s.title || '').trim());
+      if (m) maxNo = Math.max(maxNo, Number(m[1]));
+    }
+    return `子项${maxNo + 1}`;
+  };
+
+  const deleteOne = (s: any) => {
+    if (confirm(`确认删除子项「${s.title}」？`)) run(() => deleteSection(bookId, s.id));
+  };
 
   const toggle = (id: string) => setExpanded(p => ({ ...p, [id]: !p[id] }));
   const run = async (fn: () => Promise<any>) => { try { await fn(); } catch { /* 错误已入 store.error */ } };
@@ -93,7 +110,12 @@ export default function CharacterList() {
               <span className="truncate flex-1">{c.name}</span>
               {c.alias && <span className="text-text-tertiary shrink-0">({c.alias})</span>}
               <button data-role="add-section"
-                onClick={(e) => { e.stopPropagation(); setExpanded(p => ({ ...p, [c.id]: true })); setNewSection({ characterId: c.id, title: '' }); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setExpanded(p => ({ ...p, [c.id]: true }));
+                  // 与新增章节一致：先给出默认名（子项N），可在草稿行里改
+                  setNewSection({ characterId: c.id, title: nextSectionTitle(c.id) });
+                }}
                 className="hidden group-hover:inline shrink-0 text-text-tertiary hover:text-text-primary"
                 title="新建子项">
                 <Plus size={13} />
@@ -106,12 +128,13 @@ export default function CharacterList() {
               </button>
             </div>
 
-            {/* 子项列表（无序号） */}
+            {/* 子项列表：右侧只有删除按键，重命名/删除走右键菜单（与章节一致） */}
             {open && (
               <div>
                 {kids.map(s => (
                   <div key={s.id} data-char-row="section" data-section-id={s.id} data-section-title={s.title}
-                    className="group flex items-center gap-1 pl-10 pr-3 py-0.5 hover:bg-bg-hover text-text-secondary">
+                    className="group flex items-center gap-1 pl-10 pr-3 py-0.5 hover:bg-bg-hover text-text-secondary"
+                    onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, s }); }}>
                     {renameSection?.id === s.id ? (
                       <input autoFocus value={renameSection.title} placeholder="子项标题"
                         onChange={e => setRenameSection({ id: s.id, title: e.target.value })}
@@ -128,16 +151,8 @@ export default function CharacterList() {
                     ) : (
                       <>
                         <span className="truncate flex-1">{s.title}</span>
-                        <span className="text-text-tertiary text-[10px] shrink-0">
-                          {s.content?.trim() ? `${s.content.trim().length}字` : '空'}
-                        </span>
-                        <button data-role="rename-section"
-                          onClick={(e) => { e.stopPropagation(); setRenameSection({ id: s.id, title: s.title }); }}
-                          className="hidden group-hover:inline shrink-0 text-text-tertiary hover:text-text-primary" title="重命名">
-                          <Edit3 size={11} />
-                        </button>
                         <button data-role="delete-section"
-                          onClick={(e) => { e.stopPropagation(); if (confirm(`确认删除子项「${s.title}」？`)) run(() => deleteSection(bookId, s.id)); }}
+                          onClick={(e) => { e.stopPropagation(); deleteOne(s); }}
                           className="hidden group-hover:inline shrink-0 text-text-tertiary hover:text-error" title="删除">✕</button>
                       </>
                     )}
@@ -180,6 +195,15 @@ export default function CharacterList() {
 
       {characters.length === 0 && (
         <div className="px-3 py-3 text-text-tertiary">暂无角色，点击右上角 + 新建</div>
+      )}
+
+      {/* 子项右键菜单：重命名 / 删除 */}
+      {ctxMenu && (
+        <ItemContextMenu x={ctxMenu.x} y={ctxMenu.y}
+          labels={{ rename: '重命名', remove: '删除' }}
+          onClose={() => setCtxMenu(null)}
+          onRename={() => setRenameSection({ id: ctxMenu.s.id, title: ctxMenu.s.title })}
+          onDelete={() => deleteOne(ctxMenu.s)} />
       )}
     </div>
   );

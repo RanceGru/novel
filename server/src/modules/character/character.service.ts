@@ -84,7 +84,7 @@ export class CharacterService {
     });
   }
 
-  /** 新建子项（不带序号，命名就是普通标题） */
+  /** 新建子项：标题留空时默认命名「子项N」（N 取已有同类标题最大序号 +1，与新增章节一致） */
   async createSection(characterId: string, userId: string, data: { title: string; content?: string }) {
     const char = await this.charRepo.findOne({ where: { id: characterId } });
     if (!char) throw new NotFoundException('角色不存在');
@@ -93,10 +93,21 @@ export class CharacterService {
     const siblings = await this.sectionRepo.find({ where: { characterId } });
     const sortOrder = siblings.length ? Math.max(...siblings.map(s => s.sortOrder)) + 1 : 0;
 
+    const explicit = (data.title ?? '').trim();
+    let title = explicit;
+    if (!title) {
+      let maxNo = 0;
+      for (const s of siblings) {
+        const m = /^子项(\d+)$/.exec((s.title || '').trim());
+        if (m) maxNo = Math.max(maxNo, Number(m[1]));
+      }
+      title = `子项${maxNo + 1}`;
+    }
+
     return this.sectionRepo.save(this.sectionRepo.create({
       bookId: char.bookId,
       characterId,
-      title: data.title,
+      title,
       content: data.content || null,
       sortOrder,
     }));
@@ -106,7 +117,10 @@ export class CharacterService {
     const section = await this.sectionRepo.findOne({ where: { id } });
     if (!section) throw new NotFoundException('角色子项不存在');
     await this.checkBook(section.bookId, userId);
-    Object.assign(section, omitUndefined(data));
+    const patch: any = omitUndefined(data);
+    // 标题不允许改成空白，否则界面上会出现一行没有名字的子项
+    if (typeof patch.title === 'string' && !patch.title.trim()) delete patch.title;
+    Object.assign(section, patch);
     return this.sectionRepo.save(section);
   }
 

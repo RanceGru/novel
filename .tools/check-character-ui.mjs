@@ -225,31 +225,38 @@ async function main() {
     `before=${before} after=${secs.filter(s=>s.characterId===chars[0].id).length}`);
 
   // ⑤ 重命名子项（改写）
-  // 注意：重命名/删除按钮与目录的章节行一致，是 hover 才显示的；
-  // 因此必须用真实鼠标事件移到该行上，不能只调 click()。
-  console.log('\n【⑤ 重命名子项】');
-  console.log('   悬停「外貌」行:', await hover(rowContaining('外貌')));
-  const renameVisible = await cdp.eval(`
-    (() => {
-      const rows=[...document.querySelectorAll('[data-char-row="section"]')];
-      const t=rows.find(r=>(r.textContent||'').includes('外貌'));
-      const b=t && t.querySelector('[data-role="rename-section"]');
-      if(!b) return 'no-btn';
-      return getComputedStyle(b).display === 'none' ? 'hidden' : 'visible';
-    })()
-  `);
-  check('悬停后「重命名」按钮可见', renameVisible === 'visible', renameVisible);
-  const renameClick = await cdp.eval(`
+  // 注意：重命名入口已按需求改到右键菜单，行内只保留删除按键。
+  console.log('\n【⑤ 重命名子项（右键菜单）】');
+  const ctxBox = await cdp.eval(`
     (() => {
       const row=${rowContaining('外貌')};
-      if(!row) return 'no-row';
-      const b=row.querySelector('[data-role="rename-section"]');
-      if(!b) return 'no-btn';
-      b.click();
-      return 'clicked';
+      if(!row) return null;
+      const r=row.getBoundingClientRect();
+      return { x: Math.round(r.left+r.width/2), y: Math.round(r.top+r.height/2) };
     })()
   `);
-  console.log('   点重命名:', renameClick);
+  if (ctxBox) {
+    const base = { x: ctxBox.x, y: ctxBox.y, button: 'right', buttons: 2, clickCount: 1 };
+    await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...base });
+    await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', ...base });
+    await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...base });
+  }
+  await sleep(900);
+  const menuOpen = await cdp.eval(`
+    (() => {
+      const m=document.querySelector('[data-role="item-context-menu"]');
+      return m ? { open:true, 文案:[...m.querySelectorAll('button')].map(b=>(b.textContent||'').trim()).join(',') } : { open:false };
+    })()
+  `);
+  console.log('   右键菜单:', JSON.stringify(menuOpen));
+  check('右键弹出菜单且含重命名', menuOpen.open && (menuOpen.文案 || '').includes('重命名'), JSON.stringify(menuOpen));
+  const renameClick = await cdp.eval(`
+    (() => {
+      const b=document.querySelector('[data-role="menu-rename"]');
+      if(!b) return 'no-btn'; b.click(); return 'clicked';
+    })()
+  `);
+  console.log('   点菜单重命名:', renameClick);
   await sleep(900);
   const renameBox = await cdp.eval(`
     (() => {
@@ -260,7 +267,7 @@ async function main() {
       return document.activeElement===i ? 'shown' : 'shown-no-focus';
     })()
   `);
-  check('点重命名出现输入框', renameBox.startsWith('shown'), renameBox);
+  check('菜单重命名出现输入框', renameBox.startsWith('shown'), renameBox);
   await cdp.eval(`
     (() => {
       const t=${rowContaining('外貌')};

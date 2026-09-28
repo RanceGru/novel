@@ -181,7 +181,8 @@ async function main() {
   console.log('   自建条目:', JSON.stringify(same.自建));
   check('自建条目也没有展开箭头', same.自建.every((x) => !x.含箭头));
   check('自建条目不可点击', same.自建.every((x) => !x.可点击类));
-  check('自建条目没有改名/删除按钮', same.自建.every((x) => x.有操作按钮 === 0));
+  // 按需求：右侧只有删除按键（重命名/删除走右键菜单），不能有行内重命名按键
+  check('自建条目只有删除按键', same.自建.every((x) => x.有操作按钮 === 1), JSON.stringify(same.自建.map((x) => x.有操作按钮)));
   const styleEq = same.固定.length && same.自建.length
     && same.固定[0].类名 === same.自建[0].类名
     && same.固定[0].内边距 === same.自建[0].内边距;

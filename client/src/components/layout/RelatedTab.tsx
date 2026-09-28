@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { ChevronRight, ChevronDown, Plus } from 'lucide-react';
 import OutlineTree from '../outline/OutlineTree';
 import CharacterList, { OPEN_NEW_CHARACTER_EVENT } from '../characters/CharacterList';
+import ItemContextMenu from './ItemContextMenu';
 import { useCharacterStore } from '../../stores/character.store';
 import { useWorldbuildingStore } from '../../stores/worldbuilding.store';
 
@@ -80,12 +81,15 @@ function CharacterSection({ bookId, expanded, onToggle }: { bookId: string; expa
 const FIXED_WORLD_CATEGORIES = ['era', 'society', 'power_system', 'politics', 'economy', 'culture', 'geography'];
 
 function WorldSection({ bookId, expanded, onToggle }: { bookId: string; expanded: boolean; onToggle: () => void }) {
-  // 条目一律是展示行，目前没有内容编辑入口，故不需要 update/remove
-  const { settings, loadSettings, create } = useWorldbuildingStore();
+  const { settings, loadSettings, create, update, remove } = useWorldbuildingStore();
   useEffect(() => { if (expanded) loadSettings(bookId); }, [expanded, bookId]);
 
   /** 新建条目的草稿标题（像新增章节那样，先起名再确认落库） */
   const [newItem, setNewItem] = useState<{ title: string } | null>(null);
+  /** 正在重命名的条目 id 与草稿标题 */
+  const [renameItem, setRenameItem] = useState<{ id: string; title: string } | null>(null);
+  /** 右键菜单位置与目标条目 */
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; s: any } | null>(null);
 
   /** 默认名「其他补充N」：N 取已有同类标题的最大序号 +1 */
   const nextSupplementTitle = () => {
@@ -110,6 +114,16 @@ function WorldSection({ bookId, expanded, onToggle }: { bookId: string; expanded
     await create(bookId, { category: 'other', title, content: '' });
   };
 
+  const confirmRename = async (id: string, title: string) => {
+    const t = title.trim();
+    if (t) await update(bookId, id, { title: t });
+    setRenameItem(null);
+  };
+
+  const deleteItem = async (s: any) => {
+    if (confirm(`确认删除「${s.title}」？`)) await remove(bookId, s.id);
+  };
+
   // 按 sortOrder 排列：固定条目在前，用户新增的在后
   const items = [...settings].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
 
@@ -131,17 +145,32 @@ function WorldSection({ bookId, expanded, onToggle }: { bookId: string; expanded
 
       {expanded && (
         <div>
-          {/* 所有条目一律是展示行：无展开箭头、不可点击、无改名/删除入口。
-              固定条目与用户新增的条目外观完全一致，仅 data-world-row 不同以便区分与测试。 */}
+          {/* 条目行与章节行同构：右侧 hover 出删除按键，重命名/删除走右键菜单。
+              不再显示「空」与行内重命名按键（按需求去掉）。 */}
           {items.map((s: any) => {
             const isFixed = FIXED_WORLD_CATEGORIES.includes(s.category);
+            const renaming = renameItem?.id === s.id;
             return (
               <div key={s.id} data-world-row={isFixed ? 'fixed' : 'item'} data-world-title={s.title}
-                className="pl-14 pr-3 py-1 text-xs text-text-secondary flex items-center gap-1.5">
-                <span className="truncate flex-1">{s.title}</span>
-                <span className="text-text-tertiary text-[10px] shrink-0">
-                  {s.content?.trim() ? `${s.content.trim().length}字` : ''}
-                </span>
+                className="group pl-14 pr-3 py-1 text-xs text-text-secondary hover:bg-bg-hover flex items-center gap-1.5 transition-colors"
+                onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, s }); }}>
+                {renaming ? (
+                  // 断言非空：renaming 为真时 renameItem 必然存在（TS 不会跨表达式窄化）
+                  <input autoFocus value={(renameItem as { id: string; title: string }).title} placeholder="条目名称"
+                    onChange={(e) => setRenameItem({ id: s.id, title: e.target.value })}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') { e.preventDefault(); confirmRename(s.id, e.currentTarget.value); }
+                      if (e.key === 'Escape') setRenameItem(null);
+                    }}
+                    className="flex-1 min-w-0 px-1 py-0 text-xs border border-brand-primary rounded bg-bg-primary" />
+                ) : (
+                  <>
+                    <span className="truncate flex-1">{s.title}</span>
+                    <button data-role="delete-world-item"
+                      onClick={(e) => { e.stopPropagation(); deleteItem(s); }}
+                      className="hidden group-hover:inline shrink-0 text-text-tertiary hover:text-error" title="删除">✕</button>
+                  </>
+                )}
               </div>
             );
           })}
@@ -166,6 +195,15 @@ function WorldSection({ bookId, expanded, onToggle }: { bookId: string; expanded
             <div className="pl-14 pr-3 py-1 text-text-tertiary text-xs">暂无信息，点击右侧 + 新增</div>
           )}
         </div>
+      )}
+
+      {/* 右键菜单：重命名 / 删除 */}
+      {ctxMenu && (
+        <ItemContextMenu x={ctxMenu.x} y={ctxMenu.y}
+          labels={{ rename: '重命名', remove: '删除' }}
+          onClose={() => setCtxMenu(null)}
+          onRename={() => setRenameItem({ id: ctxMenu.s.id, title: ctxMenu.s.title })}
+          onDelete={() => deleteItem(ctxMenu.s)} />
       )}
     </div>
   );
