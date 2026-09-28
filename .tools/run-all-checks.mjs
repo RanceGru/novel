@@ -20,6 +20,7 @@ const SUITES = [
   ['角色 API', 'check-character-api.mjs'],
   ['作品删除级联', 'check-book-cascade.mjs'],
   ['Electron preload', 'check-preload.mjs'],
+  ['preload 重建稳定性', 'check-preload-stability.mjs'],
   ['纲树界面', 'check-outline-ui.mjs'],
   ['细纲对齐', 'check-outline-aligned.mjs'],
   ['角色界面', 'check-character-ui.mjs'],

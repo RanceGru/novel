@@ -69,6 +69,9 @@ importers:
       electron-builder:
         specifier: ^24.9.0
         version: 24.13.3(electron-builder-squirrel-windows@24.13.3)
+      esbuild:
+        specifier: ^0.21.5
+        version: 0.21.5
       postcss:
         specifier: ^8.4.0
         version: 8.5.15
@@ -1634,6 +1637,7 @@ packages:
   '@xmldom/xmldom@0.9.10':
     resolution: {integrity: sha512-A9gOqLdi6cV4ibazAjcQufGj0B1y/vDqYrcuP6d/6x8P27gRS8643Dj9o1dEKtB6O7fwxb2FgBmJS2mX7gpvdw==}
     engines: {node: '>=14.6'}
+    deprecated: this version has critical issues, please update to the latest version
 
   '@xtuc/ieee754@1.2.0':
     resolution: {integrity: sha512-DX8nKgqcGwsc0eJSqYt5lwP4DH5FlHnmuWWBRy7X0NcaGR0ZtuyeESgMwTYVEtxmsNGY+qit4QYT/MIYTOTPeA==}
