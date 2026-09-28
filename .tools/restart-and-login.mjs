@@ -59,21 +59,35 @@ async function main() {
   }
   console.log('② Vite 就绪:', viteOk ? '是' : '否');
 
-  // 3) 启动带调试端口的 Electron
-  const child = spawn(path.join(CLIENT, 'node_modules/electron/dist/electron.exe'),
-    ['.', `--remote-debugging-port=${PORT}`],
-    { cwd: CLIENT, env: { ...process.env, VITE_DEV_SERVER_URL: 'http://localhost:5173' }, stdio: ['ignore', 'ignore', 'ignore'] });
-
+  // 3) 启动带调试端口的 Electron。
+  //    注意：如果端口上已经有实例在监听（上一次「常驻」留下的），就复用它，
+  //    不要再起一个——新实例抢不到调试端口，脚本会一直等到超时。
+  //    （这个坑踩过：旧实例占着 9260，新实例默默启动后脚本卡死。）
+  let reused = false;
   let t = null;
-  for (let i = 0; i < 40; i++) {
-    await sleep(500);
+  const findTarget = async () => {
     try {
       const list = await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json();
-      t = list.find((x) => x.type === 'page' && x.url.includes('5173'));
-      if (t) break;
-    } catch { /* 等待 */ }
+      return list.find((x) => x.type === 'page' && x.url.includes('5173')) || null;
+    } catch { return null; }
+  };
+  t = await findTarget();
+  let child = null;
+  if (t) {
+    reused = true;
+    console.log('③ 调试端口已有实例，复用该窗口（不新起）');
+  } else {
+    child = spawn(path.join(CLIENT, 'node_modules/electron/dist/electron.exe'),
+      ['.', `--remote-debugging-port=${PORT}`],
+      { cwd: CLIENT, env: { ...process.env, VITE_DEV_SERVER_URL: 'http://localhost:5173' }, stdio: ['ignore', 'ignore', 'ignore'] });
+    console.log('③ 已启动新的 Electron 实例');
   }
-  if (!t) throw new Error('无法连接调试端口');
+
+  for (let i = 0; i < 40 && !t; i++) {
+    await sleep(500);
+    t = await findTarget();
+  }
+  if (!t) { if (child) child.kill(); throw new Error('无法连接调试端口'); }
   const ws = new WebSocket(t.webSocketDebuggerUrl);
   await new Promise((res, rej) => { ws.addEventListener('open', res, { once: true }); ws.addEventListener('error', rej, { once: true }); });
   const cdp = new CDP(ws);
