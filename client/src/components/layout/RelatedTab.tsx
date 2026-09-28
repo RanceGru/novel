@@ -1,6 +1,6 @@
 // 作品相关标签页 — 纲树/角色/世界观
 import { useState, useEffect } from 'react';
-import { ChevronRight, ChevronDown, Plus, Edit3 } from 'lucide-react';
+import { ChevronRight, ChevronDown, Plus } from 'lucide-react';
 import OutlineTree from '../outline/OutlineTree';
 import CharacterList, { OPEN_NEW_CHARACTER_EVENT } from '../characters/CharacterList';
 import { useCharacterStore } from '../../stores/character.store';
@@ -31,24 +31,6 @@ function OutlineSection({ bookId, expanded, onToggle }: { bookId: string; expand
       </button>
       {expanded && <div className="border-l border-border-primary ml-10"><OutlineTree showHeader={false} /></div>}
     </div>
-  );
-}
-
-/** 世界观条目名称：显示态为文本，编辑态为输入框（Enter 提交、Esc 取消） */
-function WorldItemTitle({ editing, value, onChange, onCommit, onCancel }: {
-  editing: boolean; value: string;
-  onChange: (v: string) => void; onCommit: (v: string) => void; onCancel: () => void;
-}) {
-  if (!editing) return <span className="truncate flex-1">{value}</span>;
-  return (
-    <input autoFocus value={value} placeholder="条目名称"
-      onClick={(e) => e.stopPropagation()}
-      onChange={(e) => onChange(e.target.value)}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') { e.preventDefault(); onCommit(e.currentTarget.value); }
-        if (e.key === 'Escape') onCancel();
-      }}
-      className="flex-1 min-w-0 px-1 py-0 text-xs border border-brand-primary rounded bg-bg-primary" />
   );
 }
 
@@ -98,14 +80,10 @@ function CharacterSection({ bookId, expanded, onToggle }: { bookId: string; expa
 const FIXED_WORLD_CATEGORIES = ['era', 'society', 'power_system', 'politics', 'economy', 'culture', 'geography'];
 
 function WorldSection({ bookId, expanded, onToggle }: { bookId: string; expanded: boolean; onToggle: () => void }) {
-  const { settings, loadSettings, create, update, remove } = useWorldbuildingStore();
+  // 条目一律是展示行，目前没有内容编辑入口，故不需要 update/remove
+  const { settings, loadSettings, create } = useWorldbuildingStore();
   useEffect(() => { if (expanded) loadSettings(bookId); }, [expanded, bookId]);
 
-  /** 正展开查看内容的条目 id 与草稿内容 */
-  const [openId, setOpenId] = useState<string | null>(null);
-  const [draft, setDraft] = useState('');
-  /** 正在重命名的条目 id 与草稿标题 */
-  const [renameItem, setRenameItem] = useState<{ id: string; title: string } | null>(null);
   /** 新建条目的草稿标题（像新增章节那样，先起名再确认落库） */
   const [newItem, setNewItem] = useState<{ title: string } | null>(null);
 
@@ -122,7 +100,6 @@ function WorldSection({ bookId, expanded, onToggle }: { bookId: string; expanded
   /** 点右上「+」：打开命名草稿行（与新增章节一致：先命名，确认才落库） */
   const startNewItem = () => {
     if (!expanded) onToggle();
-    setOpenId(null);
     setNewItem({ title: nextSupplementTitle() });
   };
 
@@ -131,21 +108,6 @@ function WorldSection({ bookId, expanded, onToggle }: { bookId: string; expanded
     const title = newItem.title.trim() || nextSupplementTitle();
     setNewItem(null);
     await create(bookId, { category: 'other', title, content: '' });
-  };
-
-  const toggleItem = (s: any) => {
-    if (openId === s.id) { setOpenId(null); return; }
-    setOpenId(s.id);
-    setDraft(s.content || '');
-  };
-  const saveItem = async (id: string) => {
-    await update(bookId, id, { content: draft });
-    setOpenId(null);
-  };
-  const confirmRename = async (id: string, title: string) => {
-    const t = title.trim();
-    if (t) await update(bookId, id, { title: t });
-    setRenameItem(null);
   };
 
   // 按 sortOrder 排列：固定条目在前，用户新增的在后
@@ -169,66 +131,17 @@ function WorldSection({ bookId, expanded, onToggle }: { bookId: string; expanded
 
       {expanded && (
         <div>
+          {/* 所有条目一律是展示行：无展开箭头、不可点击、无改名/删除入口。
+              固定条目与用户新增的条目外观完全一致，仅 data-world-row 不同以便区分与测试。 */}
           {items.map((s: any) => {
             const isFixed = FIXED_WORLD_CATEGORIES.includes(s.category);
-            const isOpen = openId === s.id;
-            // 先把「本行是否在改名」取出来：TS 不会对同一对象的重复可选链做窄化
-            const renaming = renameItem?.id === s.id;
-
-            // 固定条目：没有展开箭头、不可点击，只展示内容
-            if (isFixed) {
-              return (
-                <div key={s.id} data-world-row="fixed" data-world-title={s.title}
-                  className="pl-14 pr-3 py-1 text-xs text-text-secondary flex items-center gap-1.5">
-                  <span className="truncate flex-1">{s.title}</span>
-                  <span className="text-text-tertiary text-[10px] shrink-0">
-                    {s.content?.trim() ? `${s.content.trim().length}字` : ''}
-                  </span>
-                </div>
-              );
-            }
-
-            // 用户新增的条目：与子项/章节同构（可展开写内容，hover 出改名/删除）
             return (
-              <div key={s.id}>
-                <div data-world-row="item" data-world-title={s.title}
-                  className="group w-full pl-14 pr-3 py-1 text-xs text-text-secondary hover:bg-bg-hover flex items-center gap-1.5 transition-colors cursor-pointer"
-                  onClick={() => toggleItem(s)}>
-                  {isOpen ? <ChevronDown size={12} className="text-text-tertiary" /> : <ChevronRight size={12} className="text-text-tertiary" />}
-                  <WorldItemTitle
-                    editing={renaming}
-                    value={renaming ? (renameItem as { id: string; title: string }).title : s.title}
-                    onChange={(v) => setRenameItem({ id: s.id, title: v })}
-                    onCommit={(v) => confirmRename(s.id, v)}
-                    onCancel={() => setRenameItem(null)}
-                  />
-                  {!renaming && (
-                    <>
-                      <span className="text-text-tertiary text-[10px] shrink-0">
-                        {s.content?.trim() ? `${s.content.trim().length}字` : '空'}
-                      </span>
-                      <button data-role="rename-world-item"
-                        onClick={(e) => { e.stopPropagation(); setRenameItem({ id: s.id, title: s.title }); }}
-                        className="hidden group-hover:inline shrink-0 text-text-tertiary hover:text-text-primary" title="重命名">
-                        <Edit3 size={11} />
-                      </button>
-                      <button data-role="delete-world-item"
-                        onClick={(e) => { e.stopPropagation(); if (confirm(`确认删除「${s.title}」？`)) remove(bookId, s.id); }}
-                        className="hidden group-hover:inline shrink-0 text-text-tertiary hover:text-error" title="删除">✕</button>
-                    </>
-                  )}
-                </div>
-                {isOpen && (
-                  <div className="pl-16 pr-3 pb-2">
-                    <textarea autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} rows={5}
-                      placeholder={`填写「${s.title}」的内容…`}
-                      className="w-full p-1.5 text-xs border border-brand-primary rounded bg-bg-primary resize-y" />
-                    <div className="flex gap-2 mt-1">
-                      <button className="text-brand-primary hover:underline" onClick={() => saveItem(s.id)}>保存</button>
-                      <button className="text-text-tertiary hover:text-text-primary" onClick={() => setOpenId(null)}>取消</button>
-                    </div>
-                  </div>
-                )}
+              <div key={s.id} data-world-row={isFixed ? 'fixed' : 'item'} data-world-title={s.title}
+                className="pl-14 pr-3 py-1 text-xs text-text-secondary flex items-center gap-1.5">
+                <span className="truncate flex-1">{s.title}</span>
+                <span className="text-text-tertiary text-[10px] shrink-0">
+                  {s.content?.trim() ? `${s.content.trim().length}字` : ''}
+                </span>
               </div>
             );
           })}

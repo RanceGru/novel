@@ -163,70 +163,50 @@ async function main() {
   api = (await J('GET', `/books/${book.id}/world-settings`)).body.data;
   check('支持自定义命名后落库', api.some((s) => s.title === '王朝更替'), api.map((s) => s.title).join(','));
 
-  // ④ 自建条目可展开写内容 + 可重命名 + 可删除
-  console.log('\n【③ 自建条目的编辑能力】');
+  // ④ 新增出来的条目与固定条目外观/交互完全一致（都是纯展示行）
+  console.log('\n【③ 新增条目与固定条目一致】');
+  const same = await cdp.eval(`
+    (() => {
+      const pick=(sel)=>[...document.querySelectorAll(sel)].map(r=>({
+        标题:r.getAttribute('data-world-title'),
+        含箭头:!!r.querySelector('svg'),
+        可点击类:/cursor-pointer/.test(r.className),
+        有操作按钮:r.querySelectorAll('button').length,
+        类名:r.className,
+        内边距:getComputedStyle(r).paddingLeft + '/' + getComputedStyle(r).paddingTop,
+      }));
+      return { 固定: pick('[data-world-row="fixed"]'), 自建: pick('[data-world-row="item"]') };
+    })()
+  `);
+  console.log('   自建条目:', JSON.stringify(same.自建));
+  check('自建条目也没有展开箭头', same.自建.every((x) => !x.含箭头));
+  check('自建条目不可点击', same.自建.every((x) => !x.可点击类));
+  check('自建条目没有改名/删除按钮', same.自建.every((x) => x.有操作按钮 === 0));
+  const styleEq = same.固定.length && same.自建.length
+    && same.固定[0].类名 === same.自建[0].类名
+    && same.固定[0].内边距 === same.自建[0].内边距;
+  check('自建条目与固定条目的 class/内边距一致', !!styleEq,
+    `固定=${same.固定[0]?.类名} | 自建=${same.自建[0]?.类名}`);
+
+  // 点自建条目也不应出现输入框（作用域只看「相关」区域，右侧章纲面板本来就有文本域）
   await cdp.eval(`
     (() => {
       const r=[...document.querySelectorAll('[data-world-row="item"]')].find(x=>x.getAttribute('data-world-title')==='其他补充1');
-      if(!r) return 'not-found'; r.click(); return 'clicked';
+      if(!r) return 'not-found';
+      r.click(); r.dispatchEvent(new MouseEvent('click',{bubbles:true}));
+      return 'clicked';
     })()
   `);
   await sleep(1200);
-  const hasTextarea = await cdp.eval(`!!document.querySelector('textarea[placeholder*="其他补充1"]')`);
-  check('自建条目可展开填写内容', hasTextarea);
-
-  await cdp.eval(`
+  const afterItemClick = await cdp.eval(`
     (() => {
-      const ta=document.querySelector('textarea');
-      if(!ta) return 'no-ta';
-      const set=Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype,'value').set;
-      set.call(ta,'补充设定内容ABC'); ta.dispatchEvent(new Event('input',{bubbles:true}));
-      return 'ok';
+      const header=document.querySelector('[data-role="world-header"]');
+      const scope=header ? header.parentElement : document.body;
+      return { 相关区内文本域: scope.querySelectorAll('textarea').length };
     })()
   `);
-  await sleep(400);
-  await cdp.eval(`(() => { const b=[...document.querySelectorAll('button')].find(x=>/^保存$/.test((x.textContent||'').trim())); if(!b) return 'no-save'; b.click(); return 'clicked'; })()`);
-  await sleep(2500);
-  api = (await J('GET', `/books/${book.id}/world-settings`)).body.data;
-  check('内容已落库', (api.find((s) => s.title === '其他补充1')?.content || '').includes('补充设定内容ABC'));
-
-  // 重命名（hover 出按钮）
-  const target = api.find((s) => s.title === '其他补充1');
-  await cdp.eval(`
-    (() => {
-      const r=[...document.querySelectorAll('[data-world-row="item"]')].find(x=>x.getAttribute('data-world-title')==='其他补充1');
-      if(!r) return 'no-row';
-      r.querySelector('[data-role="rename-world-item"]').click(); return 'clicked';
-    })()
-  `);
-  await sleep(1000);
-  const renameBox = await cdp.eval(`
-    (() => {
-      const i=document.querySelector('input[placeholder="条目名称"]');
-      if(!i) return { 出现:false };
-      const set=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;
-      set.call(i,'其他补充1（改名）'); i.dispatchEvent(new Event('input',{bubbles:true}));
-      return { 出现:true, 原值:i.value };
-    })()
-  `);
-  check('点重命名出现输入框', renameBox.出现);
-  await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
-  await sleep(2500);
-  api = (await J('GET', `/books/${book.id}/world-settings`)).body.data;
-  check('重命名已落库', api.some((s) => s.title === '其他补充1（改名）'), api.map((s) => s.title).join(','));
-
-  // 删除
-  await cdp.eval(`
-    (() => {
-      window.confirm = () => true;
-      const r=[...document.querySelectorAll('[data-world-row="item"]')].find(x=>x.getAttribute('data-world-title')==='其他补充1（改名）');
-      if(!r) return 'no-row';
-      r.querySelector('[data-role="delete-world-item"]').click(); return 'clicked';
-    })()
-  `);
-  await sleep(2500);
-  api = (await J('GET', `/books/${book.id}/world-settings`)).body.data;
-  check('删除已落库', !api.some((s) => s.id === target.id), api.map((s) => s.title).join(','));
+  console.log('   点击自建条目后:', JSON.stringify(afterItemClick));
+  check('点击自建条目也不出现文本输入框', afterItemClick.相关区内文本域 === 0);
 
   ws.close();
   console.log(`\n=== 结论: ${pass} 通过 / ${fail} 失败 ===`);
