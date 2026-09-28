@@ -38,9 +38,11 @@ async function main() {
   }).then((r) => r.result.value));
   await sleep(2500);
 
-  for (const [label, text] of [['相关', '相关'], ['角色', '角色'], ['世界观', '世界观']]) {
+  // 展开「相关」「世界观」；角色默认收起，避免把世界观挤出可视区
+  const steps = (process.env.OPEN_STEPS || '相关,世界观').split(',');
+  for (const text of steps) {
     const r = await send('Runtime.evaluate', { expression: clickBySpan(text), returnByValue: true });
-    console.log(`展开${label}:`, r.result.value);
+    console.log(`展开${text}:`, r.result.value);
     await sleep(1800);
   }
 

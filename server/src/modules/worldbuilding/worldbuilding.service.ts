@@ -10,8 +10,11 @@ import { Book } from '../project/entities/book.entity';
 import { omitUndefined } from '../../common/utils/object.utils';
 
 /**
- * 默认自带的条目（顺序即展示顺序）。
- * category 沿用原分类键，便于后续按类型取用；title 就是界面上显示的名称。
+ * 默认自带的固定条目（顺序即展示顺序）。
+ *
+ * 这些是「世界观的下级条目」，相当于分卷下的章节：
+ * 界面上没有展开箭头、不可点击、也不需要输入框，只展示其内容。
+ * 用户可以自己新增条目（默认命名「其他补充N」），那些才是可编辑的。
  */
 const DEFAULT_SETTINGS: Array<{ category: string; title: string }> = [
   { category: 'era', title: '时代信息' },
@@ -21,12 +24,14 @@ const DEFAULT_SETTINGS: Array<{ category: string; title: string }> = [
   { category: 'economy', title: '经济体系' },
   { category: 'culture', title: '文化体系' },
   { category: 'geography', title: '地理位置' },
-  { category: 'other', title: '其他补充' },
 ];
 
-/** 新增条目的默认分类与命名 */
+/** 固定条目的分类键；其余分类都视为用户自建条目 */
+export const FIXED_SETTING_CATEGORIES = DEFAULT_SETTINGS.map((d) => d.category);
+
+/** 新增条目的默认分类与命名前缀（默认名形如「其他补充1」） */
 const NEW_SETTING_CATEGORY = 'other';
-const NEW_SETTING_TITLE = '其他补充';
+const NEW_SETTING_TITLE_PREFIX = '其他补充';
 
 @Injectable()
 export class WorldbuildingService {
@@ -73,22 +78,33 @@ export class WorldbuildingService {
   }
 
   /**
-   * 新建条目。标题留空时用默认名「其他补充」；
+   * 新建条目。标题留空时用默认名「其他补充N」——N 取该作品下
+   * 「其他补充N」形式标题的最大序号 +1，与章节编号的做法一致。
    * sortOrder 取当前最大值 +1，保证排在默认条目之后。
    */
   async create(bookId: string, userId: string, data: { category?: string; title?: string; content?: string }) {
     await this.checkBook(bookId, userId);
-    const max = await this.wsRepo
-      .createQueryBuilder('w')
-      .select('MAX(w.sort_order)', 'max')
-      .where('w.book_id = :bookId', { bookId })
-      .getRawOne<{ max: number | null }>();
+    const rows = await this.wsRepo.find({ where: { bookId }, select: ['title', 'sortOrder'] });
+    const maxSort = rows.reduce((m, r) => Math.max(m, r.sortOrder ?? 0), 0);
+
+    const explicit = (data.title ?? '').trim();
+    let title = explicit;
+    if (!title) {
+      let maxNo = 0;
+      const re = new RegExp(`^${NEW_SETTING_TITLE_PREFIX}(\\d+)$`);
+      for (const r of rows) {
+        const m = re.exec((r.title || '').trim());
+        if (m) maxNo = Math.max(maxNo, Number(m[1]));
+      }
+      title = `${NEW_SETTING_TITLE_PREFIX}${maxNo + 1}`;
+    }
+
     const ws = this.wsRepo.create({
       bookId,
       category: data.category || NEW_SETTING_CATEGORY,
-      title: (data.title ?? '').trim() || NEW_SETTING_TITLE,
+      title,
       content: data.content ?? null,
-      sortOrder: (max?.max ?? 0) + 1,
+      sortOrder: maxSort + 1,
     });
     return this.wsRepo.save(ws);
   }

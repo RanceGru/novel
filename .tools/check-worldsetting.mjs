@@ -1,15 +1,15 @@
-// 验证「世界观」区域（条目即内容，无下级）：
-//   ① 默认自带 8 个条目，顺序固定：时代信息/社会背景/力量体系/政治体系/经济体系/文化体系/地理位置/其他补充
-//   ② 标题行右侧有「新增信息」按钮（样式/尺寸与角色行一致）
-//   ③ 点新增 → 默认命名「其他补充」，排在最后
-//   ④ 条目可点开填写内容并保存（这是「可填写的项」，不是分组标题）
-//   ⑤ 不存在分组标题这一层（原先的「力量体系 > 武道境界」两层结构已取消）
+// 验证「世界观」区域（结构对齐「分卷 → 章节」）：
+//   ① 默认自带 7 个固定条目：时代信息/社会背景/力量体系/政治体系/经济体系/文化体系/地理位置
+//      它们没有展开箭头、点击不展开、不出现文本输入框
+//   ② 标题行右侧「新增信息」按钮，点击后出现「名称输入框 + ✓/✗」草稿行（像新增章节）
+//   ③ 草稿默认命名「其他补充1」，确认后落库；再新增得到「其他补充2」
+//   ④ 新建的条目可自定义命名、可展开填写内容、可重命名、可删除
 import { loginDemo, makeClient, freshBook, selectBookInUi, openRelatedInUi } from './test-utils.mjs';
 
 const PORT = Number(process.env.PORT || 9260);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-const DEFAULT_TITLES = ['时代信息', '社会背景', '力量体系', '政治体系', '经济体系', '文化体系', '地理位置', '其他补充'];
+const FIXED_TITLES = ['时代信息', '社会背景', '力量体系', '政治体系', '经济体系', '文化体系', '地理位置'];
 
 let pass = 0, fail = 0;
 const check = (l, c, extra = '') => { console.log(`   ${c ? '✓' : '✗'} ${l}${extra ? ' ' + extra : ''}`); c ? pass++ : fail++; };
@@ -46,8 +46,6 @@ const clickSpan = (text) => `
   })()
 `;
 
-const rows = `[...document.querySelectorAll('[data-world-row="item"]')].map(x=>x.getAttribute('data-world-title'))`;
-
 async function main() {
   const auth = await loginDemo();
   const { J } = makeClient(auth.accessToken);
@@ -70,113 +68,165 @@ async function main() {
   console.log('展开世界观:', await cdp.eval(clickSpan('世界观')));
   await sleep(2500);
 
-  // ① 默认条目
-  console.log('\n【① 默认自带的条目】');
-  const uiRows = await cdp.eval(rows);
-  console.log('   界面条目:', JSON.stringify(uiRows));
-  check('界面显示 8 个默认条目', Array.isArray(uiRows) && uiRows.length === 8, `count=${Array.isArray(uiRows) ? uiRows.length : 'n/a'}`);
-  check('条目顺序与默认一致', Array.isArray(uiRows) && uiRows.join(',') === DEFAULT_TITLES.join(','),
-    Array.isArray(uiRows) ? uiRows.join(',') : '');
-
-  const apiRows = (await J('GET', `/books/${book.id}/world-settings`)).body.data;
-  check('后端也补齐了 8 条', apiRows.length === 8, `count=${apiRows.length}`);
-  check('后端按 sortOrder 升序返回',
-    apiRows.every((s, i) => i === 0 || s.sortOrder >= apiRows[i - 1].sortOrder),
-    apiRows.map((s) => s.sortOrder).join(','));
-
-  // ② 标题行按钮
-  console.log('\n【② 新增信息按钮】');
-  const header = await cdp.eval(`
+  // ① 固定条目
+  console.log('\n【① 固定条目（7 个，无箭头不可点）】');
+  const fixed = await cdp.eval(`
     (() => {
-      const h=document.querySelector('[data-role="world-header"]');
-      const btn=h && h.querySelector('[data-role="add-world-setting"]');
-      const charBtn=document.querySelector('[data-role="new-character"]');
-      if(!h||!btn) return { found:false };
-      const r=btn.getBoundingClientRect(), hr=h.getBoundingClientRect();
-      const round=(x)=>({w:Math.round(x.width),h:Math.round(x.height)});
-      return { found:true, 标题:(h.textContent||'').trim(), 按钮标题:btn.title,
-               按钮在右侧:r.left > hr.left + hr.width*0.5,
-               尺寸与角色按钮一致: charBtn ? JSON.stringify(round(r))===JSON.stringify(round(charBtn.getBoundingClientRect())) : null };
+      const rows=[...document.querySelectorAll('[data-world-row="fixed"]')];
+      return rows.map(r=>({
+        标题: r.getAttribute('data-world-title'),
+        含箭头: !!r.querySelector('svg'),
+        可点击类: /cursor-pointer/.test(r.className),
+      }));
     })()
   `);
-  console.log('   标题行:', JSON.stringify(header));
-  check('标题行文本为「世界观」（无计数）', header.标题 === '世界观', JSON.stringify(header.标题));
-  check('右侧按钮标题为「新增信息」', header.按钮标题 === '新增信息', header.按钮标题);
-  check('按钮位于名称右侧', header.按钮在右侧);
-  check('按钮尺寸与角色行一致', header.尺寸与角色按钮一致 !== false);
+  console.log('   固定条目:', JSON.stringify(fixed));
+  check('固定条目为 7 个', fixed.length === 7, `count=${fixed.length}`);
+  check('标题与默认一致', fixed.map((x) => x.标题).join(',') === FIXED_TITLES.join(','), fixed.map((x) => x.标题).join(','));
+  check('固定条目没有展开箭头', fixed.every((x) => !x.含箭头));
+  check('固定条目不可点击', fixed.every((x) => !x.可点击类));
 
-  // ③ 新增 → 默认名「其他补充」，排在最后
-  console.log('\n【③ 点新增】');
-  await cdp.eval(`(() => { const b=document.querySelector('[data-role="add-world-setting"]'); if(!b) return 'no-btn'; b.click(); return 'clicked'; })()`);
-  await sleep(2500);
-  const afterAdd = await cdp.eval(rows);
-  console.log('   新增后界面条目:', JSON.stringify(afterAdd));
-  check('新增了第 9 条', Array.isArray(afterAdd) && afterAdd.length === 9, `count=${Array.isArray(afterAdd) ? afterAdd.length : 'n/a'}`);
-  check('新增条目默认名为「其他补充」', Array.isArray(afterAdd) && afterAdd[8] === '其他补充', String(afterAdd && afterAdd[8]));
-  const apiAfter = (await J('GET', `/books/${book.id}/world-settings`)).body.data;
-  const last = apiAfter[apiAfter.length - 1];
-  check('新增条目已落库且 sortOrder 最大', last.title === '其他补充' && last.sortOrder === Math.max(...apiAfter.map((s) => s.sortOrder)),
-    `title=${last.title} sortOrder=${last.sortOrder}`);
-
-  // ④ 点开条目填写内容并保存
-  console.log('\n【④ 条目可填写内容】');
+  // 点一下固定条目，仍不应出现输入框
   await cdp.eval(`
     (() => {
-      const r=[...document.querySelectorAll('[data-world-row="item"]')].find(x=>x.getAttribute('data-world-title')==='力量体系');
+      const r=document.querySelector('[data-world-row="fixed"][data-world-title="力量体系"]');
+      if(!r) return 'not-found';
+      r.click(); r.dispatchEvent(new MouseEvent('click',{bubbles:true}));
+      return 'clicked';
+    })()
+  `);
+  await sleep(1200);
+  // 注意作用域：右侧「章纲（快照）」面板本来就有文本域，不能统计全页
+  const afterClick = await cdp.eval(`
+    (() => {
+      const header=document.querySelector('[data-role="world-header"]');
+      const scope=header ? header.parentElement : document.body;
+      return {
+        相关区内文本域: scope.querySelectorAll('textarea').length,
+        有力量体系输入提示: !!scope.querySelector('textarea[placeholder*="力量体系"]'),
+      };
+    })()
+  `);
+  console.log('   点击固定条目后:', JSON.stringify(afterClick));
+  check('点击固定条目不出现文本输入框',
+    afterClick.相关区内文本域 === 0 && !afterClick.有力量体系输入提示);
+
+  // ② 新增草稿行
+  console.log('\n【② 点新增信息】');
+  await cdp.eval(`(() => { const b=document.querySelector('[data-role="add-world-setting"]'); if(!b) return 'no-btn'; b.click(); return 'clicked'; })()`);
+  await sleep(1500);
+  const draft = await cdp.eval(`
+    (() => {
+      const i=document.querySelector('input[placeholder="条目名称"]');
+      const ok=document.querySelector('[data-role="confirm-new-world-item"]');
+      return { 有输入框: !!i, 默认值: i?i.value:null, 有确认按钮: !!ok };
+    })()
+  `);
+  console.log('   草稿行:', JSON.stringify(draft));
+  check('出现名称输入框（像新增章节）', draft.有输入框);
+  check('默认命名为「其他补充1」', draft.默认值 === '其他补充1', JSON.stringify(draft.默认值));
+  check('有 ✓ 确认按钮', draft.有确认按钮);
+
+  // 后端此时不应已有该条目（确认后才落库）
+  const beforeConfirm = (await J('GET', `/books/${book.id}/world-settings`)).body.data;
+  check('确认前未落库', beforeConfirm.length === 7, `count=${beforeConfirm.length}`);
+
+  // ③ 确认落库
+  await cdp.eval(`(() => { const b=document.querySelector('[data-role="confirm-new-world-item"]'); if(!b) return 'no-btn'; b.click(); return 'clicked'; })()`);
+  await sleep(2500);
+  let api = (await J('GET', `/books/${book.id}/world-settings`)).body.data;
+  check('确认后落库', api.length === 8, `count=${api.length}`);
+  check('落库名称「其他补充1」', api.some((s) => s.title === '其他补充1'), api.map((s) => s.title).join(','));
+  const uiAfterFirst = await cdp.eval(`[...document.querySelectorAll('[data-world-row="item"]')].map(x=>x.getAttribute('data-world-title'))`);
+  check('界面出现该条目', Array.isArray(uiAfterFirst) && uiAfterFirst.includes('其他补充1'), JSON.stringify(uiAfterFirst));
+
+  // 再次新增 → 其他补充2
+  await cdp.eval(`(() => { const b=document.querySelector('[data-role="add-world-setting"]'); b.click(); return 'clicked'; })()`);
+  await sleep(1500);
+  const draft2 = await cdp.eval(`(() => { const i=document.querySelector('input[placeholder="条目名称"]'); return i?i.value:null; })()`);
+  console.log('   第二次草稿默认值:', JSON.stringify(draft2));
+  check('第二次默认命名为「其他补充2」', draft2 === '其他补充2', JSON.stringify(draft2));
+
+  // 自定义命名后确认
+  await cdp.eval(`
+    (() => {
+      const i=document.querySelector('input[placeholder="条目名称"]');
+      if(!i) return 'no-input';
+      const set=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;
+      set.call(i,'王朝更替'); i.dispatchEvent(new Event('input',{bubbles:true}));
+      return 'ok';
+    })()
+  `);
+  await sleep(400);
+  await cdp.eval(`(() => { const b=document.querySelector('[data-role="confirm-new-world-item"]'); b.click(); return 'clicked'; })()`);
+  await sleep(2500);
+  api = (await J('GET', `/books/${book.id}/world-settings`)).body.data;
+  check('支持自定义命名后落库', api.some((s) => s.title === '王朝更替'), api.map((s) => s.title).join(','));
+
+  // ④ 自建条目可展开写内容 + 可重命名 + 可删除
+  console.log('\n【③ 自建条目的编辑能力】');
+  await cdp.eval(`
+    (() => {
+      const r=[...document.querySelectorAll('[data-world-row="item"]')].find(x=>x.getAttribute('data-world-title')==='其他补充1');
       if(!r) return 'not-found'; r.click(); return 'clicked';
     })()
   `);
   await sleep(1200);
-  const editorOpen = await cdp.eval(`
-    (() => {
-      const ta=document.querySelector('textarea[placeholder*="力量体系"]');
-      return ta ? { open:true } : { open:false, 有textarea: !!document.querySelector('textarea') };
-    })()
-  `);
-  console.log('   编辑器:', JSON.stringify(editorOpen));
-  check('点条目展开出可填写区域', editorOpen.open);
+  const hasTextarea = await cdp.eval(`!!document.querySelector('textarea[placeholder*="其他补充1"]')`);
+  check('自建条目可展开填写内容', hasTextarea);
 
   await cdp.eval(`
     (() => {
-      const ta=document.querySelector('textarea[placeholder*="力量体系"]');
+      const ta=document.querySelector('textarea');
       if(!ta) return 'no-ta';
       const set=Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype,'value').set;
-      set.call(ta,'共九境：炼体、开脉、凝气…');
-      ta.dispatchEvent(new Event('input',{bubbles:true}));
+      set.call(ta,'补充设定内容ABC'); ta.dispatchEvent(new Event('input',{bubbles:true}));
       return 'ok';
     })()
   `);
   await sleep(400);
   await cdp.eval(`(() => { const b=[...document.querySelectorAll('button')].find(x=>/^保存$/.test((x.textContent||'').trim())); if(!b) return 'no-save'; b.click(); return 'clicked'; })()`);
   await sleep(2500);
-  const saved = (await J('GET', `/books/${book.id}/world-settings`)).body.data.find((s) => s.title === '力量体系');
-  check('内容已落库', !!saved && (saved.content || '').includes('共九境'), JSON.stringify((saved || {}).content));
+  api = (await J('GET', `/books/${book.id}/world-settings`)).body.data;
+  check('内容已落库', (api.find((s) => s.title === '其他补充1')?.content || '').includes('补充设定内容ABC'));
 
-  // ⑤ 不存在分组标题层
-  // 判据：只比较 8 个默认条目的「出现次数」会被步骤③新增的同名第 9 条干扰，
-  // 所以改为直接断言 —— 这些名字各自只对应一个条目行（data-world-row="item"），
-  // 界面上不存在「属于条目行之外的同名文本」（那才是分组标题）。
-  console.log('\n【⑤ 无分组层】');
-  const grouping = await cdp.eval(`
+  // 重命名（hover 出按钮）
+  const target = api.find((s) => s.title === '其他补充1');
+  await cdp.eval(`
     (() => {
-      const titles=${JSON.stringify(DEFAULT_TITLES)};
-      const rowTitles=[...document.querySelectorAll('[data-world-row="item"]')].map(x=>x.getAttribute('data-world-title'));
-      const out={};
-      for (const t of titles) {
-        const rowCount=rowTitles.filter(x=>x===t).length;
-        // 界面上等于该标题的整行数量（含非条目行）
-        const lineCount=(document.body.innerText||'').split('\\n').map(s=>s.trim()).filter(l=>l===t).length;
-        out[t]={ 条目行:rowCount, 整行:lineCount };
-      }
-      return { out, 条目行总数: rowTitles.length };
+      const r=[...document.querySelectorAll('[data-world-row="item"]')].find(x=>x.getAttribute('data-world-title')==='其他补充1');
+      if(!r) return 'no-row';
+      r.querySelector('[data-role="rename-world-item"]').click(); return 'clicked';
     })()
   `);
-  console.log('   各默认条目:', JSON.stringify(grouping.out));
-  console.log('   条目行总数:', grouping.条目行总数);
-  const noGroupHeader = Object.entries(grouping.out).every(([, v]) => v.条目行 >= 1 && v.整行 <= v.条目行);
-  check('默认条目都渲染成条目行', DEFAULT_TITLES.every((t) => grouping.out[t].条目行 >= 1));
-  check('没有条目行之外的同名标题（即无分组标题层）', noGroupHeader,
-    JSON.stringify(grouping.out));
+  await sleep(1000);
+  const renameBox = await cdp.eval(`
+    (() => {
+      const i=document.querySelector('input[placeholder="条目名称"]');
+      if(!i) return { 出现:false };
+      const set=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;
+      set.call(i,'其他补充1（改名）'); i.dispatchEvent(new Event('input',{bubbles:true}));
+      return { 出现:true, 原值:i.value };
+    })()
+  `);
+  check('点重命名出现输入框', renameBox.出现);
+  await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
+  await sleep(2500);
+  api = (await J('GET', `/books/${book.id}/world-settings`)).body.data;
+  check('重命名已落库', api.some((s) => s.title === '其他补充1（改名）'), api.map((s) => s.title).join(','));
+
+  // 删除
+  await cdp.eval(`
+    (() => {
+      window.confirm = () => true;
+      const r=[...document.querySelectorAll('[data-world-row="item"]')].find(x=>x.getAttribute('data-world-title')==='其他补充1（改名）');
+      if(!r) return 'no-row';
+      r.querySelector('[data-role="delete-world-item"]').click(); return 'clicked';
+    })()
+  `);
+  await sleep(2500);
+  api = (await J('GET', `/books/${book.id}/world-settings`)).body.data;
+  check('删除已落库', !api.some((s) => s.id === target.id), api.map((s) => s.title).join(','));
 
   ws.close();
   console.log(`\n=== 结论: ${pass} 通过 / ${fail} 失败 ===`);

@@ -34,6 +34,24 @@ function OutlineSection({ bookId, expanded, onToggle }: { bookId: string; expand
   );
 }
 
+/** 世界观条目名称：显示态为文本，编辑态为输入框（Enter 提交、Esc 取消） */
+function WorldItemTitle({ editing, value, onChange, onCommit, onCancel }: {
+  editing: boolean; value: string;
+  onChange: (v: string) => void; onCommit: (v: string) => void; onCancel: () => void;
+}) {
+  if (!editing) return <span className="truncate flex-1">{value}</span>;
+  return (
+    <input autoFocus value={value} placeholder="条目名称"
+      onClick={(e) => e.stopPropagation()}
+      onChange={(e) => onChange(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') { e.preventDefault(); onCommit(e.currentTarget.value); }
+        if (e.key === 'Escape') onCancel();
+      }}
+      className="flex-1 min-w-0 px-1 py-0 text-xs border border-brand-primary rounded bg-bg-primary" />
+  );
+}
+
 /** 角色区：标题行右侧直接放「新建角色」，列表内不再重复一行标题 */
 function CharacterSection({ bookId, expanded, onToggle }: { bookId: string; expanded: boolean; onToggle: () => void }) {
   const { characters, loadCharacters } = useCharacterStore();
@@ -76,25 +94,46 @@ function CharacterSection({ bookId, expanded, onToggle }: { bookId: string; expa
   );
 }
 
+/** 固定条目的分类键；其余分类视为用户自建条目（可展开、可改名、可删除） */
+const FIXED_WORLD_CATEGORIES = ['era', 'society', 'power_system', 'politics', 'economy', 'culture', 'geography'];
+
 function WorldSection({ bookId, expanded, onToggle }: { bookId: string; expanded: boolean; onToggle: () => void }) {
-  const { settings, loadSettings, create, update } = useWorldbuildingStore();
+  const { settings, loadSettings, create, update, remove } = useWorldbuildingStore();
   useEffect(() => { if (expanded) loadSettings(bookId); }, [expanded, bookId]);
 
-  /** 展开查看/编辑内容的条目 id，以及该条目的草稿内容 */
+  /** 正展开查看内容的条目 id 与草稿内容 */
   const [openId, setOpenId] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
+  /** 正在重命名的条目 id 与草稿标题 */
+  const [renameItem, setRenameItem] = useState<{ id: string; title: string } | null>(null);
+  /** 新建条目的草稿标题（像新增章节那样，先起名再确认落库） */
+  const [newItem, setNewItem] = useState<{ title: string } | null>(null);
 
-  /**
-   * 新增一条信息：默认命名「其他补充」（同名即可，与默认自带的那个一样），
-   * 排在所有现有条目之后（sortOrder 由后端分配）。
-   * 收起状态下先展开再创建，避免用户点了没反应。
-   */
-  const addSetting = async () => {
-    await create(bookId, { category: 'other', title: '其他补充', content: '' });
-    if (!expanded) onToggle();
+  /** 默认名「其他补充N」：N 取已有同类标题的最大序号 +1 */
+  const nextSupplementTitle = () => {
+    let maxNo = 0;
+    for (const s of settings as any[]) {
+      const m = /^其他补充(\d+)$/.exec((s.title || '').trim());
+      if (m) maxNo = Math.max(maxNo, Number(m[1]));
+    }
+    return `其他补充${maxNo + 1}`;
   };
 
-  const openItem = (s: any) => {
+  /** 点右上「+」：打开命名草稿行（与新增章节一致：先命名，确认才落库） */
+  const startNewItem = () => {
+    if (!expanded) onToggle();
+    setOpenId(null);
+    setNewItem({ title: nextSupplementTitle() });
+  };
+
+  const confirmNewItem = async () => {
+    if (!newItem) return;
+    const title = newItem.title.trim() || nextSupplementTitle();
+    setNewItem(null);
+    await create(bookId, { category: 'other', title, content: '' });
+  };
+
+  const toggleItem = (s: any) => {
     if (openId === s.id) { setOpenId(null); return; }
     setOpenId(s.id);
     setDraft(s.content || '');
@@ -103,10 +142,14 @@ function WorldSection({ bookId, expanded, onToggle }: { bookId: string; expanded
     await update(bookId, id, { content: draft });
     setOpenId(null);
   };
+  const confirmRename = async (id: string, title: string) => {
+    const t = title.trim();
+    if (t) await update(bookId, id, { title: t });
+    setRenameItem(null);
+  };
 
-  // 按 sortOrder 排列：默认自带的 8 个条目在前，新增的在后
-  const items = [...settings].sort((a, b) =>
-    (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  // 按 sortOrder 排列：固定条目在前，用户新增的在后
+  const items = [...settings].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
 
   return (
     <div>
@@ -117,28 +160,63 @@ function WorldSection({ bookId, expanded, onToggle }: { bookId: string; expanded
         {expanded ? <ChevronDown size={12} className="text-text-tertiary" /> : <ChevronRight size={12} className="text-text-tertiary" />}
         <span className="text-text-secondary flex-1">世界观</span>
         <button data-role="add-world-setting"
-          onClick={(e) => { e.stopPropagation(); addSetting(); }}
+          onClick={(e) => { e.stopPropagation(); startNewItem(); }}
           className="inline-flex shrink-0 rounded hover:bg-bg-active text-text-tertiary hover:text-text-primary transition-colors p-0.5"
           title="新增信息">
           <Plus size={15} />
         </button>
       </div>
+
       {expanded && (
         <div>
-          {/* 条目即「可填写的一项」，下面没有更深的子项；点行展开即可填写内容 */}
           {items.map((s: any) => {
+            const isFixed = FIXED_WORLD_CATEGORIES.includes(s.category);
             const isOpen = openId === s.id;
+            // 先把「本行是否在改名」取出来：TS 不会对同一对象的重复可选链做窄化
+            const renaming = renameItem?.id === s.id;
+
+            // 固定条目：没有展开箭头、不可点击，只展示内容
+            if (isFixed) {
+              return (
+                <div key={s.id} data-world-row="fixed" data-world-title={s.title}
+                  className="pl-14 pr-3 py-1 text-xs text-text-secondary flex items-center gap-1.5">
+                  <span className="truncate flex-1">{s.title}</span>
+                  <span className="text-text-tertiary text-[10px] shrink-0">
+                    {s.content?.trim() ? `${s.content.trim().length}字` : ''}
+                  </span>
+                </div>
+              );
+            }
+
+            // 用户新增的条目：与子项/章节同构（可展开写内容，hover 出改名/删除）
             return (
               <div key={s.id}>
                 <div data-world-row="item" data-world-title={s.title}
                   className="group w-full pl-14 pr-3 py-1 text-xs text-text-secondary hover:bg-bg-hover flex items-center gap-1.5 transition-colors cursor-pointer"
-                  onClick={() => openItem(s)}>
+                  onClick={() => toggleItem(s)}>
                   {isOpen ? <ChevronDown size={12} className="text-text-tertiary" /> : <ChevronRight size={12} className="text-text-tertiary" />}
-                  <span className="truncate flex-1">{s.title}</span>
-                  <span className="text-text-tertiary text-[10px] shrink-0">
-                    {s.content?.trim() ? `${s.content.trim().length}字` : '空'}
-                  </span>
-                  <Edit3 size={11} className="hidden group-hover:inline shrink-0 text-text-tertiary" />
+                  <WorldItemTitle
+                    editing={renaming}
+                    value={renaming ? (renameItem as { id: string; title: string }).title : s.title}
+                    onChange={(v) => setRenameItem({ id: s.id, title: v })}
+                    onCommit={(v) => confirmRename(s.id, v)}
+                    onCancel={() => setRenameItem(null)}
+                  />
+                  {!renaming && (
+                    <>
+                      <span className="text-text-tertiary text-[10px] shrink-0">
+                        {s.content?.trim() ? `${s.content.trim().length}字` : '空'}
+                      </span>
+                      <button data-role="rename-world-item"
+                        onClick={(e) => { e.stopPropagation(); setRenameItem({ id: s.id, title: s.title }); }}
+                        className="hidden group-hover:inline shrink-0 text-text-tertiary hover:text-text-primary" title="重命名">
+                        <Edit3 size={11} />
+                      </button>
+                      <button data-role="delete-world-item"
+                        onClick={(e) => { e.stopPropagation(); if (confirm(`确认删除「${s.title}」？`)) remove(bookId, s.id); }}
+                        className="hidden group-hover:inline shrink-0 text-text-tertiary hover:text-error" title="删除">✕</button>
+                    </>
+                  )}
                 </div>
                 {isOpen && (
                   <div className="pl-16 pr-3 pb-2">
@@ -146,10 +224,8 @@ function WorldSection({ bookId, expanded, onToggle }: { bookId: string; expanded
                       placeholder={`填写「${s.title}」的内容…`}
                       className="w-full p-1.5 text-xs border border-brand-primary rounded bg-bg-primary resize-y" />
                     <div className="flex gap-2 mt-1">
-                      <button className="text-brand-primary hover:underline"
-                        onClick={() => saveItem(s.id)}>保存</button>
-                      <button className="text-text-tertiary hover:text-text-primary"
-                        onClick={() => setOpenId(null)}>取消</button>
+                      <button className="text-brand-primary hover:underline" onClick={() => saveItem(s.id)}>保存</button>
+                      <button className="text-text-tertiary hover:text-text-primary" onClick={() => setOpenId(null)}>取消</button>
                     </div>
                   </div>
                 )}
@@ -157,7 +233,23 @@ function WorldSection({ bookId, expanded, onToggle }: { bookId: string; expanded
             );
           })}
 
-          {items.length === 0 && (
+          {/* 新建条目草稿：像新增章节一样，左边就是名称输入框（预设「其他补充N」） */}
+          {newItem && (
+            <div className="pl-14 pr-3 py-1 flex items-center gap-1">
+              <input autoFocus value={newItem.title} placeholder="条目名称"
+                onChange={(e) => setNewItem({ title: e.target.value })}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { e.preventDefault(); confirmNewItem(); }
+                  if (e.key === 'Escape') setNewItem(null);
+                }}
+                className="flex-1 min-w-0 px-1 py-0 text-xs border border-brand-primary rounded bg-bg-primary" />
+              <button data-role="confirm-new-world-item" className="text-brand-primary shrink-0" title="确认"
+                onClick={confirmNewItem}>✓</button>
+              <button className="text-text-tertiary shrink-0" title="取消" onClick={() => setNewItem(null)}>✕</button>
+            </div>
+          )}
+
+          {items.length === 0 && !newItem && (
             <div className="pl-14 pr-3 py-1 text-text-tertiary text-xs">暂无信息，点击右侧 + 新增</div>
           )}
         </div>
