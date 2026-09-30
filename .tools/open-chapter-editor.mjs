@@ -20,15 +20,15 @@ await send('Runtime.enable'); await send('Page.enable');
 await send('Page.reload');
 await sleep(8000);
 
-// 选中一个分卷数最多的作品（作品3 里有测试章节）
+// 选中作品1（里面有实际章节），再展开目录 → 分卷 → 点章节
 console.log('选作品:', await ev(`
   (() => {
     const btns=[...document.querySelectorAll('button')].filter(b=>b.querySelector('img') && /字/.test(b.textContent||''));
-    const t=btns.find(b=>/作品3/.test(b.textContent||'')) || btns.find(b=>/示例作品/.test(b.textContent||''));
-    if(!t) return 'not-found'; t.click(); return 'clicked';
+    const t=btns.find(b=>/作品1(?!\\d)/.test(b.textContent||'')) || btns[0];
+    if(!t) return 'not-found'; t.click(); return 'clicked:'+(t.textContent||'').trim().slice(0,12);
   })()
 `));
-await sleep(2500);
+await sleep(3000);
 console.log('展开目录:', await ev(`
   (() => {
     const s=[...document.querySelectorAll('span')].filter(x=>(x.textContent||'').trim()==='目录');
@@ -60,6 +60,8 @@ console.log('点开章节:', ch);
 await sleep(2500);
 console.log('正文编辑器:', JSON.stringify(await ev(`
   (() => ({
+    路径: (document.querySelector('[data-role="editor-breadcrumb"]')||{}).getAttribute
+      ? document.querySelector('[data-role="editor-breadcrumb"]').getAttribute('title') : null,
     纯文本框: !!document.querySelector('[data-role="chapter-content"]'),
     富文本残留: !!document.querySelector('.tiptap-editor'),
     字数: (document.querySelector('[data-role="char-count"]')||{}).textContent,

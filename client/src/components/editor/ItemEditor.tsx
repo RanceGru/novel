@@ -5,15 +5,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Save, X } from 'lucide-react';
 import { useEditorStore } from '../../stores/editor.store';
-
-/** 各类型的界面文案 */
-const KIND_LABEL: Record<string, string> = {
-  book_outline: '大纲',
-  volume_outline: '卷纲',
-  chapter_outline: '章纲',
-  character_section: '角色子项',
-  world_setting: '世界观条目',
-};
+import EditorBreadcrumb from './EditorBreadcrumb';
 
 export default function ItemEditor() {
   const { selectedDoc, saveDoc, closeDoc } = useEditorStore();
@@ -58,9 +50,10 @@ export default function ItemEditor() {
 
   return (
     <div className="h-full flex flex-col">
-      {/* 工具栏：条目名称 + 保存 */}
+      {/* 工具栏：路径 + 条目名称 + 保存 */}
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border-primary bg-bg-secondary text-xs">
-        <span className="text-text-tertiary shrink-0">{KIND_LABEL[selectedDoc.kind] || '条目'}</span>
+        <EditorBreadcrumb />
+        <span className="text-text-tertiary shrink-0">·</span>
         {selectedDoc.editableTitle ? (
           <input data-role="item-title" value={title} onChange={(e) => setTitle(e.target.value)}
             placeholder="名称"

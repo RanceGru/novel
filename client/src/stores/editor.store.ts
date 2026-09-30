@@ -43,6 +43,16 @@ interface EditorState {
   /** 左栏选中、正在中间编辑器里编辑的条目（与选中章节互斥） */
   selectedDoc: SelectedDoc | null;
 
+  /**
+   * 当前正在编辑的内容在书里的位置，形如：
+   *   ['示例作品', '目录', '第1卷 分卷1', '第1章 章节1']
+   * 中间编辑器左上角显示它，作用同文件管理器里的路径。
+   */
+  currentPath: string[];
+
+  /** 设置当前位置（各左栏组件在打开内容时调用） */
+  setCurrentPath: (path: string[]) => void;
+
   setCurrentChapter: (bookId: string, volumeId: string, chapterId: string) => void;
   setContent: (content: string) => void;
   setChapterOutline: (outline: string) => void;
@@ -90,6 +100,23 @@ function docOps(kind: DocKind, bookId: string, id: string) {
   }
 }
 
+/** 各类型条目在路径里的上一级名称 */
+const KIND_PARENT: Record<DocKind, string> = {
+  book_outline: '纲树',
+  volume_outline: '细纲',
+  chapter_outline: '细纲',
+  character_section: '角色',
+  world_setting: '世界观',
+};
+
+/** 拼出条目的路径：作品名 > 所在分区 > 条目名 */
+function docPath(doc: SelectedDoc, bookTitle: string | undefined): string[] {
+  const base = bookTitle ? [bookTitle] : [];
+  // 大纲是单例，路径就到「纲树 > 大纲」，不再加自己的名字重复一次
+  if (doc.kind === 'book_outline') return [...base, KIND_PARENT.book_outline];
+  return [...base, KIND_PARENT[doc.kind], doc.title];
+}
+
 export const useEditorStore = create<EditorState>()((set, get) => ({
   currentBookId: null,
   currentVolumeId: null,
@@ -106,6 +133,9 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   showChatPanel: false,
   editorZoom: 1,
   selectedDoc: null,
+  currentPath: [],
+
+  setCurrentPath: (path) => set({ currentPath: path }),
 
   setCurrentChapter: (bookId, volumeId, chapterId) =>
     set((s) => ({
@@ -126,13 +156,15 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   toggleRightPanel: () => set((s) => ({ showRightPanel: !s.showRightPanel })),
   setZoom: (zoom) => set({ editorZoom: Math.min(1.5, Math.max(0.75, zoom)) }),
 
-  selectDoc: (doc) => set({
+  selectDoc: (doc) => set((s) => ({
     selectedDoc: doc,
     // 互斥：打开条目时清掉当前章节，避免中间区域同时有两份内容。
     // 注意 currentBookId 要保留 —— 保存条目时要用它拼接口路径。
     currentChapterId: null, currentVolumeId: null,
     chapterContent: '', chapterOutline: '', instruction: '',
-  }),
+    // 路径：作品名 > 所在分区 > 条目名
+    currentPath: docPath(doc, useProjectStore.getState().currentBook?.title || undefined),
+  })),
   closeDoc: () => set({ selectedDoc: null }),
 
   saveDoc: async (content, title) => {

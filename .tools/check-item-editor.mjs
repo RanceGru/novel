@@ -140,6 +140,19 @@ async function main() {
   console.log('   中间区域:', JSON.stringify(st));
   check('点击大纲切到条目编辑器', st.条目编辑器);
   check('标题显示「大纲」', st.条目标题 === '大纲', JSON.stringify(st.条目标题));
+  // 面包屑应显示「作品名 › 纲树」
+  const crumb = await cdp.eval(`
+    (() => {
+      const nav=document.querySelector('[data-role="editor-breadcrumb"]');
+      if(!nav) return { found:false };
+      return { found:true, title:nav.getAttribute('title'),
+               段:[...nav.querySelectorAll('span')].filter(s=>!s.querySelector('span')).map(s=>(s.textContent||'').trim()).filter(Boolean) };
+    })()
+  `);
+  console.log('   面包屑:', JSON.stringify(crumb));
+  check('条目编辑器也有路径面包屑', crumb.found);
+  check('路径为「作品 › 纲树」', crumb.found && crumb.段.length === 2
+    && crumb.段[0].includes(book.title) && crumb.段[1] === '纲树', JSON.stringify(crumb.段));
   await writeAndSave('全书总纲：测试大纲内容 A');
   let outline = (await J('GET', `/books/${book.id}/outlines`)).body.data;
   check('大纲内容已落库', (outline.bookOutline?.content || '').includes('测试大纲内容 A'),

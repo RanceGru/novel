@@ -100,6 +100,29 @@ async function main() {
   await sleep(2500);
   check('选中章节后出现正文编辑框', await cdp.eval(`!!document.querySelector('[data-role="chapter-content"]')`));
 
+  // ===== ①b 左上角显示「当前文本在哪」的路径（不是固定的「纯文本」）=====
+  console.log('\n【①b 编辑器路径面包屑】');
+  const crumb = await cdp.eval(`
+    (() => {
+      const nav=document.querySelector('[data-role="editor-breadcrumb"]');
+      if(!nav) return { found:false };
+      // 只取每段里最内层的文本 span，避免把外层容器（含箭头）也读进来
+      const segs=[...nav.querySelectorAll('span')]
+        .filter(s=>!s.querySelector('span'))
+        .map(s=>(s.textContent||'').trim()).filter(Boolean);
+      return { found:true, 段:segs, title:nav.getAttribute('title') };
+    })()
+  `);
+  console.log('   面包屑:', JSON.stringify(crumb));
+  check('存在路径面包屑', crumb.found);
+  check('不再显示固定的「纯文本」', !(crumb.段 || []).includes('纯文本'), JSON.stringify(crumb.段));
+  check('路径含作品名', (crumb.段 || []).some((s) => s.includes(book.title)), JSON.stringify(crumb.段));
+  check('路径含「目录」', (crumb.段 || []).includes('目录'), JSON.stringify(crumb.段));
+  check('路径含分卷', (crumb.段 || []).some((s) => /^第\d+卷/.test(s)), JSON.stringify(crumb.段));
+  check('末段是当前章节', (crumb.段 || []).slice(-1)[0]?.startsWith(`第${ch.chapterNumber}章`) === true,
+    JSON.stringify((crumb.段 || []).slice(-1)));
+  check('段落之间用 › 分隔', (crumb.title || '').includes(' › '), crumb.title);
+
   // ===== ② 输入 → 自动保存 =====
   console.log('\n【② 输入并自动保存】');
   const text = '第一段内容。\n\n第二段内容，共两段。';

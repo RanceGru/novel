@@ -123,12 +123,22 @@ export default function LeftSidebar() {
   // 选择章节
   const handleSelectChapter = async (chapterId: string, bookId: string, volumeId: string) => {
     setCurrentChapter(bookId, volumeId, chapterId);
+    // 路径：作品名 › 目录 › 第N卷 卷标题 › 第N章 章标题
+    // （「默认」分卷是分卷外章节的归属卷，不显示在路径里）
+    const bookTitle = books.find((b) => b.id === bookId)?.title;
+    const vol = volumes.find((v) => v.id === volumeId);
     try {
       const res = await apiClient.get(`/volumes/${volumeId}/chapters/${chapterId}`);
       const chapter = res.data.data;
       useEditorStore.getState().setContent(chapter.content || '');
       useEditorStore.getState().setChapterOutline(chapter.chapterOutline || '');
       useEditorStore.getState().setInstruction(chapter.instruction || '');
+      useEditorStore.getState().setCurrentPath([
+        ...(bookTitle ? [bookTitle] : []),
+        '目录',
+        ...(vol && vol.title !== '默认' ? [`第${vol.volumeNumber}卷 ${vol.title}`] : []),
+        `第${chapter.chapterNumber}章 ${chapter.title}`,
+      ]);
     } catch (err) {
       console.error(err);
     }

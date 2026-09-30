@@ -10,6 +10,7 @@
 import { useEffect, useRef } from 'react';
 import { useEditorStore } from '../../stores/editor.store';
 import { apiClient } from '../../services/api.service';
+import EditorBreadcrumb from './EditorBreadcrumb';
 
 export default function RichEditor() {
   const {
@@ -49,9 +50,9 @@ export default function RichEditor() {
 
   return (
     <div className="h-full flex flex-col">
-      {/* 工具条：纯文本模式下没有排版按钮，只留保存状态与字数 */}
+      {/* 工具条：左侧显示「当前编辑内容的路径」，右侧是字数与保存 */}
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border-primary bg-bg-secondary text-xs">
-        <span className="text-text-tertiary">纯文本</span>
+        <EditorBreadcrumb />
         <span className="ml-auto flex items-center gap-3 shrink-0">
           {isGenerating && <span className="text-brand-primary">🤖 AI 生成中...</span>}
           <span data-role="char-count" className="text-text-tertiary">{charCount} 字</span>
