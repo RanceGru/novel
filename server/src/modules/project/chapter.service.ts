@@ -6,6 +6,7 @@ import { Chapter } from './entities/chapter.entity';
 import { Volume } from './entities/volume.entity';
 import { BookService } from './book.service';
 import { omitUndefined } from '../../common/utils/object.utils';
+import { countWords } from '../../common/utils/text.util';
 import { outlineHash } from '../outline/outline-hash.util';
 
 @Injectable()
@@ -62,7 +63,8 @@ export class ChapterService {
       outlineHash: outlineContent ? outlineHash(outlineContent) : null,
       instruction: data.instruction || null,
       content: data.content || null,
-      wordCount: data.content ? data.content.length : 0,
+      // 字数按纯文本计（历史/粘贴内容可能带 HTML，不能把标签算进去）
+      wordCount: countWords(data.content),
     });
     const saved = await this.chapterRepository.save(chapter);
     await this.bookService.updateWordCount(volume.bookId);
@@ -77,7 +79,7 @@ export class ChapterService {
     if (book.userId !== userId) throw new ForbiddenException('无权操作');
 
     if (data.content !== undefined) {
-      chapter.wordCount = data.content ? data.content.length : 0;
+      chapter.wordCount = countWords(data.content);
     }
     // 快照被直接编辑时同步刷新指纹，避免把「用户改快照」误报成「章纲有改动」
     if (data.chapterOutline !== undefined) {

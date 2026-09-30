@@ -71,12 +71,13 @@ const centerState = `
   (() => {
     const item = document.querySelector('[data-role="item-content"]');
     const titleEl = document.querySelector('[data-role="item-title"]');
-    const tiptap = document.querySelector('.tiptap-editor');
+    // 正文编辑器已改为纯文本 textarea（不再有 .tiptap-editor）
+    const chapterBox = document.querySelector('[data-role="chapter-content"]');
     return {
       条目编辑器: !!item,
       条目标题: titleEl ? (titleEl.value !== undefined ? titleEl.value : titleEl.textContent) : null,
       内容框值: item ? item.value : null,
-      正文编辑器: !!tiptap,
+      正文编辑器: !!chapterBox,
     };
   })()
 `;

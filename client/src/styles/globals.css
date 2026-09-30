@@ -24,26 +24,17 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Tiptap 编辑器样式 */
-.tiptap-editor {
+/* 正文编辑器：纯文本 textarea（原先这里是 .tiptap-editor 富文本样式，已随富文本一并移除） */
+.chapter-editor {
   outline: none;
   min-height: 100%;
-  padding: 1.5rem;
-  font-size: 16px;
-  line-height: 1.8;
+  font-size: 15px;
+  line-height: 1.9;
   color: var(--editor-text);
   background: var(--editor-bg);
 }
 
-.tiptap-editor p {
-  margin-bottom: 0.5em;
-}
-
-.tiptap-editor h1 { font-size: 1.8em; font-weight: 700; margin: 1em 0 0.5em; }
-.tiptap-editor h2 { font-size: 1.5em; font-weight: 600; margin: 0.8em 0 0.4em; }
-.tiptap-editor h3 { font-size: 1.2em; font-weight: 600; margin: 0.6em 0 0.3em; }
-
-.tiptap-editor ::selection {
+.chapter-editor::selection {
   background: var(--editor-selection);
 }
 
