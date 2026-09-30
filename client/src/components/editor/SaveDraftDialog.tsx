@@ -1,302 +1,437 @@
-// 「未保存文本」的保存位置选择弹窗
+// 「未保存文本」的保存位置选择 — 布局对齐 Windows「另存为」
 //
-// 新建文本还不属于书里任何位置，保存时要让用户选落到哪里：
-//   · 目录 → 某个分卷 → 新章节（章号自动取该卷最大号 +1）
-//   · 目录 → 分卷外章节（落到「默认」卷，没有则自动创建）
-//   · 相关 → 细纲 → 新卷纲 / 新章纲（章纲需选所属卷纲）
-//   · 相关 → 角色 → 某个角色的子项
-//   · 相关 → 世界观 → 其他补充条目
-import { useEffect, useMemo, useState } from 'react';
-import { X } from 'lucide-react';
+// 结构：
+//   顶部  ：「位置」面包屑，显示当前所在层级（可逐级下钻）
+//   左侧  ：当前位置下的可选目标（文件夹式列表，点进去下钻；可保存的项为「新建…」）
+//   右侧  ：内容预览
+//   底部  ：「文件名」输入框 + 保存 / 取消
+//
+// 层级：作品 → 目录/相关 → 分卷或分区 → …（新章节 / 新卷纲 / 新章纲 / 角色 / 世界观）
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  ChevronRight, X, Folder, FolderOpen, FileText, ArrowUp,
+  BookOpen, Users, Globe, Layers, ListTree,
+} from 'lucide-react';
 import { apiClient } from '../../services/api.service';
 
-export type SaveTargetKind =
-  | 'chapter_in_volume'   // 某分卷下的新章节
-  | 'chapter_default'     // 分卷外章节
-  | 'outline_volume'      // 细纲 → 新卷纲
-  | 'outline_chapter'     // 细纲 → 新章纲（需选所属卷纲）
-  | 'character_section'   // 角色子项（需选角色）
-  | 'world_setting';      // 世界观条目
+/** 当前浏览位置：一组面包屑，最后一项代表所处节点 */
+interface Crumb { key: string; label: string; icon?: any; }
+
+/** 保存动作的返回值：新建对象的位置与身份 */
+interface CreatedInfo {
+  path: string[];
+  id: string;
+  volumeId?: string; volumeTitle?: string; volumeNumber?: number; chapterNumber?: number;
+  docKind?: 'volume_outline' | 'chapter_outline' | 'character_section' | 'world_setting';
+}
+
+/** 列表里的一项 */
+interface Row {
+  key: string;
+  label: string;
+  /** folder = 可进去下钻；target = 可保存到这里（新建一个对象）；disabled = 仅展示 */
+  kind: 'folder' | 'target' | 'disabled';
+  detail?: string;
+  icon?: any;
+  onEnter?: () => void;
+  /** 保存到该项时执行的创建动作 */
+  create?: (title: string, content: string) => Promise<CreatedInfo>;
+  /** 选中该项时的默认文件名 */
+  defaultName?: string;
+}
 
 interface Props {
   open: boolean;
   bookId: string;
-  /** 草稿内容，保存时用 */
+  bookTitle: string;
   content: string;
   onClose: () => void;
-  /** 保存成功：回传新建目标，调用方据此把中间区域切过去 */
   onSaved: (info: {
-    kind: SaveTargetKind; id: string; title: string; path: string[];
-    /** 保存成章节时回传所属分卷与章号，便于直接打开该章节 */
-    volumeId?: string;
-    volumeTitle?: string;
-    volumeNumber?: number;
-    chapterNumber?: number;
-    /** 保存成条目时回传条目类型，便于直接进条目编辑器 */
+    path: string[]; title: string; id: string;
+    volumeId?: string; volumeTitle?: string; volumeNumber?: number; chapterNumber?: number;
     docKind?: 'volume_outline' | 'chapter_outline' | 'character_section' | 'world_setting';
   }) => void;
 }
 
-const KIND_LABEL: Record<SaveTargetKind, string> = {
-  chapter_in_volume: '某分卷下的新章节',
-  chapter_default: '分卷外章节',
-  outline_volume: '细纲 · 新卷纲',
-  outline_chapter: '细纲 · 新章纲',
-  character_section: '角色 · 子项',
-  world_setting: '世界观 · 其他补充',
-};
+const ROOT: Crumb = { key: 'root', label: '本书', icon: BookOpen };
 
-export default function SaveDraftDialog({ open, bookId, content, onClose, onSaved }: Props) {
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
+export default function SaveDraftDialog({ open, bookId, bookTitle, content, onClose, onSaved }: Props) {
+  const [stack, setStack] = useState<Crumb[]>([ROOT]);
   const [volumes, setVolumes] = useState<any[]>([]);
   const [chaptersByVolume, setChaptersByVolume] = useState<Record<string, any[]>>({});
   const [volumeOutlines, setVolumeOutlines] = useState<any[]>([]);
   const [characters, setCharacters] = useState<any[]>([]);
-  const [bookTitle, setBookTitle] = useState('');
+  const [outlineVolumeIds, setOutlineVolumeIds] = useState<Set<string>>(new Set());
 
-  const [kind, setKind] = useState<SaveTargetKind>('chapter_in_volume');
-  const [volumeId, setVolumeId] = useState<string>('');
-  const [parentOutlineId, setParentOutlineId] = useState<string>('');
-  const [characterId, setCharacterId] = useState<string>('');
-  const [title, setTitle] = useState('');
+  const [row, setRow] = useState<Row | null>(null);   // 选中的目标项
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // 打开时拉取可选的落点
+  const current = stack[stack.length - 1];
+  const atRoot = stack.length === 1;
+
+  // 打开时载入书内结构
   useEffect(() => {
     if (!open) return;
-    let cancelled = false;
+    setStack([ROOT]); setRow(null); setError(null);
     (async () => {
-      setLoading(true); setError(null);
       try {
-        const [volRes, charRes, outlineRes, bookRes] = await Promise.all([
+        const [volRes, charRes, outlineRes] = await Promise.all([
           apiClient.get(`/books/${bookId}/volumes`),
           apiClient.get(`/books/${bookId}/characters`),
           apiClient.get(`/books/${bookId}/outlines`),
-          apiClient.get(`/books/${bookId}`),
         ]);
-        if (cancelled) return;
         const vols: any[] = volRes.data.data || [];
         setVolumes(vols);
         setCharacters(charRes.data.data || []);
-        setVolumeOutlines((outlineRes.data.data?.volumes || []));
-        setBookTitle(bookRes.data.data?.title || '');
-
-        // 章节数按卷拉取（用于算新章号）
+        const vols_out = outlineRes.data.data?.volumes || [];
+        setVolumeOutlines(vols_out);
+        setOutlineVolumeIds(new Set(vols_out.map((v: any) => v.id)));
         const map: Record<string, any[]> = {};
         for (const v of vols) {
           const r = await apiClient.get(`/volumes/${v.id}/chapters`);
           map[v.id] = r.data.data || [];
         }
-        if (cancelled) return;
         setChaptersByVolume(map);
-
-        // 默认选中：第一个非「默认」分卷
-        const firstVol = vols.find((v) => v.title !== '默认') || vols[0];
-        setVolumeId(firstVol?.id || '');
-        setParentOutlineId('');
-        setCharacterId((charRes.data.data || [])[0]?.id || '');
       } catch (e: any) {
-        if (!cancelled) setError(e?.response?.data?.error?.message || e?.message || '加载失败');
-      } finally {
-        if (!cancelled) setLoading(false);
+        setError(e?.response?.data?.error?.message || e?.message || '加载失败');
       }
     })();
-    return () => { cancelled = true; };
   }, [open, bookId]);
 
-  /** 默认卷（分卷外章节的归属卷） */
   const defaultVolume = useMemo(() => volumes.find((v) => v.title === '默认'), [volumes]);
-
-  const nextChapterNumber = (vid: string) => {
+  const normalVolumes = useMemo(() => volumes.filter((v) => v.title !== '默认'), [volumes]);
+  const nextChapterNumber = useCallback((vid: string) => {
     const list = chaptersByVolume[vid] || [];
     return list.length ? Math.max(...list.map((c) => c.chapterNumber || 0)) + 1 : 1;
-  };
+  }, [chaptersByVolume]);
 
-  // 落点变化时给出默认命名（用户可改）
+  const enter = (crumb: Crumb) => { setStack((s) => [...s, crumb]); setRow(null); };
+  const goTo = (idx: number) => { setStack((s) => s.slice(0, idx + 1)); setRow(null); };
+  const goUp = () => { if (stack.length > 1) { setStack((s) => s.slice(0, -1)); setRow(null); } };
+
+  // ===== 当前位置下的列表 =====
+  const rows: Row[] = useMemo(() => {
+    if (!open) return [];
+    const list: Row[] = [];
+
+    if (atRoot) {
+      // 一级：目录 / 相关
+      list.push({
+        key: 'toc', label: '目录', kind: 'folder',
+        detail: `${normalVolumes.length} 个分卷`,
+        icon: ListTree,
+        onEnter: () => enter({ key: 'toc', label: '目录', icon: ListTree }),
+      });
+      list.push({
+        key: 'related', label: '相关', kind: 'folder',
+        detail: `细纲 ${volumeOutlines.length} · 角色 ${characters.length} · 世界观`,
+        icon: Layers,
+        onEnter: () => enter({ key: 'related', label: '相关', icon: Layers }),
+      });
+      return list;
+    }
+
+    if (current.key === 'toc') {
+      // 二级：各分卷 + 分卷外章节
+      for (const v of normalVolumes) {
+        list.push({
+          key: `vol:${v.id}`, label: `第${v.volumeNumber}卷 ${v.title}`, kind: 'folder',
+          detail: `${(chaptersByVolume[v.id] || []).length} 章`,
+          icon: Folder,
+          onEnter: () => enter({ key: `vol:${v.id}`, label: `第${v.volumeNumber}卷 ${v.title}`, icon: FolderOpen }),
+        });
+      }
+      list.push({
+        key: 'default-vol', label: '分卷外章节', kind: 'folder',
+        detail: defaultVolume ? `${(chaptersByVolume[defaultVolume.id] || []).length} 章` : '（保存时自动创建「默认」卷）',
+        icon: Folder,
+        onEnter: () => enter({ key: 'default-vol', label: '分卷外章节', icon: FolderOpen }),
+      });
+      return list;
+    }
+
+    if (current.key === 'related') {
+      list.push({
+        key: 'outline', label: '细纲', kind: 'folder',
+        detail: `卷纲 ${volumeOutlines.length}`,
+        icon: Folder,
+        onEnter: () => enter({ key: 'outline', label: '细纲', icon: FolderOpen }),
+      });
+      list.push({
+        key: 'characters', label: '角色', kind: 'folder',
+        detail: `${characters.length} 个角色`,
+        icon: Users,
+        onEnter: () => enter({ key: 'characters', label: '角色', icon: FolderOpen }),
+      });
+      list.push({
+        key: 'world', label: '世界观', kind: 'folder',
+        detail: '固定条目 + 其他补充',
+        icon: Globe,
+        onEnter: () => enter({ key: 'world', label: '世界观', icon: FolderOpen }),
+      });
+      return list;
+    }
+
+    if (current.key === 'outline') {
+      // 细纲下：新建卷纲，或进入某个卷纲去新建章纲
+      list.push({
+        key: 'new-volume-outline', label: '新建卷纲', kind: 'target',
+        detail: '在细纲下新增一个卷纲', icon: FileText,
+        defaultName: `卷纲${volumeOutlines.length + 1}`,
+        create: async (title, body) => {
+          const res = await apiClient.post(`/books/${bookId}/outlines`, { level: 'volume_outline', title, content: body });
+          return { path: [bookTitle, '细纲', title], docKind: 'volume_outline', id: res.data.data.id };
+        },
+      });
+      for (const v of volumeOutlines) {
+        list.push({
+          key: `ol:${v.id}`, label: v.title, kind: 'folder',
+          detail: '进去可新建章纲', icon: Folder,
+          onEnter: () => enter({ key: `ol:${v.id}`, label: v.title, icon: FolderOpen }),
+        });
+      }
+      return list;
+    }
+
+    // 细纲 → 某个卷纲：新建章纲
+    if (current.key.startsWith('ol:')) {
+      const parentId = current.key.slice(3);
+      const n = (chaptersByVolume[parentId] || []).length + 1;
+      list.push({
+        key: 'new-chapter-outline', label: '新建章纲', kind: 'target',
+        detail: `归到「${current.label}」下`, icon: FileText,
+        defaultName: `第${n}章 章纲`,
+        create: async (title, body) => {
+          const res = await apiClient.post(`/books/${bookId}/outlines`, {
+            level: 'chapter_outline', title, content: body, parentId,
+          });
+          return { path: [bookTitle, '细纲', current.label, title], docKind: 'chapter_outline', id: res.data.data.id };
+        },
+      });
+      return list;
+    }
+
+    // 角色 → 某角色：新建子项
+    if (current.key.startsWith('char:')) {
+      const cid = current.key.slice(5);
+      list.push({
+        key: 'new-section', label: '新建子项', kind: 'target',
+        detail: `归到「${current.label}」下`, icon: FileText,
+        defaultName: '子项',
+        create: async (title, body) => {
+          const res = await apiClient.post(`/books/${bookId}/characters/${cid}/sections`, { title, content: body });
+          return { path: [bookTitle, '角色', `${current.label} · ${title}`], docKind: 'character_section', id: res.data.data.id };
+        },
+      });
+      return list;
+    }
+
+    // 世界观 → 新建其他补充条目
+    if (current.key === 'world') {
+      list.push({
+        key: 'new-world', label: '新建其他补充', kind: 'target',
+        detail: '在世界观下新增一条', icon: FileText,
+        defaultName: '其他补充',
+        create: async (title, body) => {
+          const res = await apiClient.post(`/books/${bookId}/world-settings`, { category: 'other', title, content: body });
+          return { path: [bookTitle, '世界观', title], docKind: 'world_setting', id: res.data.data.id };
+        },
+      });
+      return list;
+    }
+
+    // 目录 → 某个分卷：新建章节（同时列出已有章节，仅展示）
+    if (current.key.startsWith('vol:')) {
+      const vid = current.key.slice(4);
+      const vol = volumes.find((v) => v.id === vid);
+      const num = nextChapterNumber(vid);
+      list.push({
+        key: 'new-chapter', label: '新建章节', kind: 'target',
+        detail: `将创建为第${num}章`, icon: FileText,
+        defaultName: `第${num}章 新章节`,
+        create: async (title, body) => {
+          const res = await apiClient.post(`/volumes/${vid}/chapters`, { title, chapterNumber: num, content: body });
+          return {
+            path: [bookTitle, '目录', `第${vol?.volumeNumber}卷 ${vol?.title}`, `第${num}章 ${res.data.data.title}`],
+            volumeId: vid, volumeTitle: vol?.title, volumeNumber: vol?.volumeNumber,
+            chapterNumber: num, id: res.data.data.id,
+          };
+        },
+      });
+      for (const c of chaptersByVolume[vid] || []) {
+        list.push({ key: `ch:${c.id}`, label: `第${c.chapterNumber}章 ${c.title}`, kind: 'disabled', detail: '已有章节', icon: FileText });
+      }
+      return list;
+    }
+
+    // 目录 → 分卷外章节
+    if (current.key === 'default-vol') {
+      const num = nextChapterNumber(defaultVolume?.id || '');
+      list.push({
+        key: 'new-default-chapter', label: '新建章节', kind: 'target',
+        detail: `将创建为第${num}章（分卷外）`, icon: FileText,
+        defaultName: `第${num}章 新章节`,
+        create: async (title, body) => {
+          let vid = defaultVolume?.id;
+          if (!vid) {
+            const r = await apiClient.post(`/books/${bookId}/volumes`, { title: '默认', volumeNumber: 0 });
+            vid = r.data.data.id;
+          }
+          const res = await apiClient.post(`/volumes/${vid}/chapters`, { title, chapterNumber: num, content: body });
+          return {
+            path: [bookTitle, '目录', `第${num}章 ${res.data.data.title}`],
+            volumeId: vid, volumeTitle: '默认', volumeNumber: 0,
+            chapterNumber: num, id: res.data.data.id,
+          };
+        },
+      });
+      for (const c of (defaultVolume ? chaptersByVolume[defaultVolume.id] : []) || []) {
+        list.push({ key: `dch:${c.id}`, label: `第${c.chapterNumber}章 ${c.title}`, kind: 'disabled', detail: '已有章节', icon: FileText });
+      }
+      return list;
+    }
+
+    // 角色列表
+    if (current.key === 'characters') {
+      for (const c of characters) {
+        list.push({
+          key: `char:${c.id}`, label: c.name, kind: 'folder',
+          detail: '进去可新建子项', icon: Folder,
+          onEnter: () => enter({ key: `char:${c.id}`, label: c.name, icon: FolderOpen }),
+        });
+      }
+      if (!characters.length) list.push({ key: 'no-char', label: '（还没有角色）', kind: 'disabled', icon: FileText });
+      return list;
+    }
+
+    return list;
+  }, [open, atRoot, current, volumes, normalVolumes, defaultVolume, chaptersByVolume, volumeOutlines, characters, bookTitle, bookId, nextChapterNumber]);
+
+  // 选中目标项后设置默认文件名
   useEffect(() => {
-    if (!open) return;
-    if (kind === 'chapter_in_volume' && volumeId) setTitle(`第${nextChapterNumber(volumeId)}章 新章节`);
-    else if (kind === 'chapter_default') setTitle(`第${nextChapterNumber(defaultVolume?.id || '')}章 新章节`);
-    else if (kind === 'outline_volume') setTitle(`卷纲${volumeOutlines.length + 1}`);
-    else if (kind === 'outline_chapter') setTitle(`第${(chaptersByVolume[volumeId] || []).length + 1}章 章纲`);
-    else if (kind === 'character_section') setTitle('子项');
-    else if (kind === 'world_setting') setTitle('其他补充');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kind, volumeId, parentOutlineId, characterId, open, volumes.length, volumeOutlines.length]);
+    if (row?.kind === 'target') setName(row.defaultName || '');
+  }, [row]);
 
   if (!open) return null;
 
-  const canSave = !!title.trim() && !saving && (
-    kind === 'chapter_default' ? true
-      : kind === 'chapter_in_volume' ? !!volumeId
-      : kind === 'outline_volume' ? true
-      : kind === 'outline_chapter' ? !!parentOutlineId
-      : kind === 'character_section' ? !!characterId
-      : true
-  );
-
-  /** 分卷外章节需要一个归属卷；没有「默认」卷时自动建一个 */
-  const ensureDefaultVolume = async (): Promise<string> => {
-    if (defaultVolume) return defaultVolume.id;
-    const res = await apiClient.post(`/books/${bookId}/volumes`, { title: '默认', volumeNumber: 0 });
-    return res.data.data.id;
-  };
+  const canSave = !!row && row.kind === 'target' && !!name.trim() && !busy;
 
   const doSave = async () => {
-    setSaving(true); setError(null);
+    if (!row?.create) return;
+    setBusy(true); setError(null);
     try {
-      const t = title.trim();
-      if (kind === 'chapter_in_volume' || kind === 'chapter_default') {
-        const vid = kind === 'chapter_default' ? await ensureDefaultVolume() : volumeId;
-        const num = nextChapterNumber(vid);
-        const res = await apiClient.post(`/volumes/${vid}/chapters`, {
-          title: t, chapterNumber: num, content,
-        });
-        const vol = volumes.find((v) => v.id === vid);
-        const path = [
-          ...(bookTitle ? [bookTitle] : []), '目录',
-          ...(vol && vol.title !== '默认' ? [`第${vol.volumeNumber}卷 ${vol.title}`] : []),
-          `第${num}章 ${res.data.data.title}`,
-        ];
-        onSaved({
-          kind, id: res.data.data.id, title: res.data.data.title, path,
-          volumeId: vid, chapterNumber: num,
-          volumeTitle: vol?.title, volumeNumber: vol?.volumeNumber,
-        });
-      } else if (kind === 'outline_volume') {
-        const res = await apiClient.post(`/books/${bookId}/outlines`, { level: 'volume_outline', title: t, content });
-        onSaved({
-          kind, id: res.data.data.id, title: t, docKind: 'volume_outline',
-          path: [...(bookTitle ? [bookTitle] : []), '细纲', t],
-        });
-      } else if (kind === 'outline_chapter') {
-        const res = await apiClient.post(`/books/${bookId}/outlines`, {
-          level: 'chapter_outline', title: t, content, parentId: parentOutlineId,
-        });
-        onSaved({
-          kind, id: res.data.data.id, title: t, docKind: 'chapter_outline',
-          path: [...(bookTitle ? [bookTitle] : []), '细纲', t],
-        });
-      } else if (kind === 'character_section') {
-        const res = await apiClient.post(`/books/${bookId}/characters/${characterId}/sections`, { title: t, content });
-        const ch = characters.find((c) => c.id === characterId);
-        onSaved({
-          kind, id: res.data.data.id, title: t, docKind: 'character_section',
-          path: [...(bookTitle ? [bookTitle] : []), '角色', ch ? `${ch.name} · ${t}` : t],
-        });
-      } else {
-        const res = await apiClient.post(`/books/${bookId}/world-settings`, { category: 'other', title: t, content });
-        onSaved({
-          kind, id: res.data.data.id, title: t, docKind: 'world_setting',
-          path: [...(bookTitle ? [bookTitle] : []), '世界观', t],
-        });
-      }
+      const info: any = await row.create(name.trim(), content);
+      onSaved({
+        path: info.path, title: name.trim(), id: info.id,
+        volumeId: info.volumeId, volumeTitle: info.volumeTitle, volumeNumber: info.volumeNumber,
+        chapterNumber: info.chapterNumber, docKind: info.docKind,
+      });
     } catch (e: any) {
       setError(e?.response?.data?.error?.message || e?.message || '保存失败');
     } finally {
-      setSaving(false);
+      setBusy(false);
     }
   };
 
-  /** 分卷外章节需要一个归属卷；没有「默认」卷时自动建一个 */
-
-  const KINDS: SaveTargetKind[] = [
-    'chapter_in_volume', 'chapter_default', 'outline_volume',
-    'outline_chapter', 'character_section', 'world_setting',
-  ];
+  const charCount = content.replace(/\s/g, '').length;
 
   return (
     <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center" onClick={onClose}>
       <div data-role="save-draft-dialog"
-        className="bg-bg-primary rounded-lg shadow-xl w-[30rem] max-h-[85vh] overflow-y-auto"
+        className="bg-bg-primary rounded-lg shadow-xl w-[46rem] max-w-[95vw] h-[34rem] max-h-[90vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border-primary">
+
+        {/* 标题 */}
+        <div className="flex items-center justify-between px-4 py-2 border-b border-border-primary shrink-0">
           <h3 className="font-semibold text-sm">保存到</h3>
           <button onClick={onClose}><X size={16} /></button>
         </div>
 
-        <div className="p-4 space-y-3 text-xs">
-          {loading && <div className="text-text-tertiary">加载可保存的位置…</div>}
-          {error && <div className="text-error">{error}</div>}
-
-          {/* 落点类型 */}
-          <div>
-            <div className="text-text-tertiary mb-1.5">保存到哪一类位置</div>
-            <div className="flex flex-wrap gap-1.5">
-              {KINDS.map((k) => (
-                <button key={k} data-role={`target-${k}`}
-                  onClick={() => setKind(k)}
-                  className={`px-2 py-1 rounded border transition-colors ${kind === k
-                    ? 'border-brand-primary text-brand-primary bg-bg-active'
-                    : 'border-border-primary text-text-secondary hover:bg-bg-hover'}`}>
-                  {KIND_LABEL[k]}
+        {/* 位置面包屑（可逐级点回） */}
+        <div className="flex items-center gap-1 px-4 py-2 text-xs border-b border-border-primary shrink-0">
+          <button data-role="crumb-up" onClick={goUp} disabled={atRoot}
+            className="p-1 rounded hover:bg-bg-hover disabled:opacity-30 shrink-0" title="上一层">
+            <ArrowUp size={13} />
+          </button>
+          <span className="text-text-tertiary shrink-0">位置：</span>
+          <nav data-role="save-crumbs" className="flex items-center gap-0.5 min-w-0 flex-wrap">
+            {stack.map((c, i) => (
+              <span key={c.key} className="flex items-center gap-0.5 min-w-0">
+                {i > 0 && <ChevronRight size={11} className="shrink-0 opacity-60" />}
+                <button data-role={`crumb-${i}`} onClick={() => goTo(i)}
+                  className={`truncate max-w-[10rem] px-1 rounded hover:bg-bg-hover ${i === stack.length - 1 ? 'text-text-primary' : 'text-text-secondary'}`}>
+                  {i === 0 ? bookTitle : c.label}
                 </button>
-              ))}
-            </div>
+              </span>
+            ))}
+          </nav>
+        </div>
+
+        {/* 列表 + 预览 */}
+        <div className="flex-1 flex min-h-0">
+          <div data-role="save-rows" className="flex-1 overflow-y-auto border-r border-border-primary">
+            {rows.map((r) => {
+              const Icon = r.icon || FileText;
+              const selected = row?.key === r.key;
+              const clickable = r.kind !== 'disabled';
+              // 用 div 而不是 button：列表行里还要放“进入 ›”这类文本，
+              // 且整块对话框不应出现 button 嵌套 button（会导致点击行为异常）
+              return (
+                <div key={r.key}
+                  data-role={`save-row-${r.key}`}
+                  data-row-kind={r.kind}
+                  aria-disabled={!clickable}
+                  onDoubleClick={() => { if (r.kind === 'folder') r.onEnter?.(); }}
+                  onClick={() => {
+                    if (!clickable) return;
+                    if (r.kind === 'folder') { r.onEnter?.(); return; }   // 文件夹：进入下一级
+                    setRow(r);                                            // 可保存项：选中
+                  }}
+                  className={`w-full text-left px-4 py-1.5 flex items-center gap-2 text-xs transition-colors
+                    ${!clickable ? 'opacity-45 cursor-default' : 'cursor-pointer hover:bg-bg-hover'}
+                    ${selected ? 'bg-bg-active text-brand-primary' : 'text-text-secondary'}`}>
+                  <Icon size={14} className="shrink-0 text-text-tertiary" />
+                  <span className="truncate">{r.label}</span>
+                  <span className="ml-auto shrink-0 text-[10px] text-text-tertiary">{r.detail || ''}</span>
+                  {r.kind === 'folder' && (
+                    <span data-role="row-enter" className="shrink-0 text-[10px] text-text-tertiary">进入 ›</span>
+                  )}
+                </div>
+              );
+            })}
+            {!rows.length && <div className="px-4 py-3 text-xs text-text-tertiary">这里没有可保存的位置</div>}
           </div>
 
-          {/* 具体位置 */}
-          {kind === 'chapter_in_volume' && (
-            <label className="block">
-              <span className="text-text-tertiary">选择分卷</span>
-              <select data-role="pick-volume" value={volumeId} onChange={(e) => setVolumeId(e.target.value)}
-                className="mt-1 w-full p-1.5 border border-border-primary rounded bg-bg-primary">
-                {volumes.filter((v) => v.title !== '默认').map((v) => (
-                  <option key={v.id} value={v.id}>第{v.volumeNumber}卷 {v.title}</option>
-                ))}
-                {!volumes.filter((v) => v.title !== '默认').length && <option value="">（暂无分卷）</option>}
-              </select>
-            </label>
-          )}
-
-          {kind === 'chapter_default' && (
-            <div className="text-text-tertiary">
-              将作为「分卷外章节」保存{defaultVolume ? '' : '（会自动创建「默认」卷）'}。
+          {/* 预览 */}
+          <div className="w-52 shrink-0 p-3 hidden md:block">
+            <div className="text-[10px] text-text-tertiary mb-1">内容预览</div>
+            <div className="text-[11px] text-text-secondary leading-relaxed whitespace-pre-wrap break-words max-h-64 overflow-y-auto">
+              {content.trim() ? content.slice(0, 400) : '（暂无内容）'}
             </div>
-          )}
-
-          {kind === 'outline_chapter' && (
-            <label className="block">
-              <span className="text-text-tertiary">选择所属卷纲</span>
-              <select data-role="pick-parent-outline" value={parentOutlineId} onChange={(e) => setParentOutlineId(e.target.value)}
-                className="mt-1 w-full p-1.5 border border-border-primary rounded bg-bg-primary">
-                <option value="">请选择…</option>
-                {volumeOutlines.map((v) => <option key={v.id} value={v.id}>{v.title}</option>)}
-              </select>
-            </label>
-          )}
-
-          {kind === 'character_section' && (
-            <label className="block">
-              <span className="text-text-tertiary">选择角色</span>
-              <select data-role="pick-character" value={characterId} onChange={(e) => setCharacterId(e.target.value)}
-                className="mt-1 w-full p-1.5 border border-border-primary rounded bg-bg-primary">
-                {characters.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                {!characters.length && <option value="">（暂无角色）</option>}
-              </select>
-            </label>
-          )}
-
-          {/* 名称 */}
-          <label className="block">
-            <span className="text-text-tertiary">名称</span>
-            <input data-role="draft-title" value={title} onChange={(e) => setTitle(e.target.value)}
-              className="mt-1 w-full p-1.5 border border-border-primary rounded bg-bg-primary" />
-          </label>
-
-          <div className="text-text-tertiary">
-            内容 {content.replace(/\s/g, '').length} 字，将随本次保存一并写入。
+            <div className="text-[10px] text-text-tertiary mt-2">{charCount} 字</div>
           </div>
         </div>
 
-        <div className="flex justify-end gap-2 px-4 py-3 border-t border-border-primary">
-          <button onClick={onClose} className="px-3 py-1 text-xs text-text-tertiary hover:text-text-primary">取消</button>
-          <button data-role="confirm-save-draft" onClick={doSave} disabled={!canSave}
-            className="px-3 py-1 text-xs bg-brand-primary text-brand-text rounded disabled:opacity-50">
-            {saving ? '保存中…' : '保存'}
-          </button>
+        {/* 底部：文件名 + 保存/取消 */}
+        <div className="px-4 py-2 border-t border-border-primary shrink-0">
+          {error && <div className="text-error text-xs mb-1.5">{error}</div>}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-text-tertiary shrink-0">文件名：</span>
+            <input data-role="draft-title" value={name} onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && canSave) doSave(); }}
+              disabled={row?.kind !== 'target'}
+              placeholder={row?.kind === 'target' ? '输入名称' : '请先在上方选择要保存到的位置'}
+              className="flex-1 min-w-0 px-2 py-1 text-xs border border-border-primary rounded bg-bg-primary disabled:opacity-60" />
+            <button data-role="confirm-save-draft" onClick={doSave} disabled={!canSave}
+              className="px-4 py-1 text-xs bg-brand-primary text-brand-text rounded disabled:opacity-50">
+              {busy ? '保存中…' : '保存'}
+            </button>
+            <button onClick={onClose} className="px-4 py-1 text-xs border border-border-primary rounded text-text-secondary hover:bg-bg-hover">
+              取消
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -52,28 +52,44 @@ const crumb = `
   })()
 `;
 
-/** 走一遍：新建文本 → 写内容 → 选落点 → 保存 */
-async function newTextAndSave(cdp, { kind, title, content, picker }) {
+/**
+ * 走一遍新流程：新建文本 → 写内容 → 保存 → 按「位置」逐级下钻 → 选目标 → 改名 → 保存
+ * @param drill 面包屑层级上的进入顺序，如 ['目录', '第1卷 …'] 表示先点「目录」再点该分卷
+ * @param targetKey 目标行的 key（data-role="save-row-<key>"）
+ */
+async function newTextAndSave(cdp, { drill, targetKey, title, content }) {
   await cdp.eval(`(() => { const b=document.querySelector('[data-role="new-text"]'); if(!b) return 'no-btn'; b.click(); return 'clicked'; })()`);
   await sleep(1200);
   await cdp.eval(setValue('[data-role="draft-content"]', content));
   await sleep(300);
   await cdp.eval(`(() => { const b=document.querySelector('[data-role="draft-save"]'); if(!b) return 'no-btn'; b.click(); return 'clicked'; })()`);
-  await sleep(2000);
-  await cdp.eval(`(() => { const b=document.querySelector('[data-role="target-${kind}"]'); if(!b) return 'no-btn'; b.click(); return 'clicked'; })()`);
-  await sleep(900);
-  if (picker) {
-    await cdp.eval(`
+  await sleep(2500);
+
+  // 逐级下钻：每级按标签找到对应的「进入」行并点击
+  for (const label of drill) {
+    const hit = await cdp.eval(`
       (() => {
-        const el=document.querySelector(${JSON.stringify(picker.selector)});
-        if(!el) return 'no-el';
-        const set=Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype,'value').set;
-        set.call(el, ${JSON.stringify(picker.value)}); el.dispatchEvent(new Event('change',{bubbles:true}));
-        return 'ok';
+        const rows=[...document.querySelectorAll('[data-role^="save-row-"]')]
+          .filter(r => r.getAttribute('data-row-kind') !== 'disabled');
+        const t=rows.find(r => (r.textContent||'').trim().startsWith(${JSON.stringify(label)}));
+        if(!t) return 'not-found:' + rows.map(r=>(r.textContent||'').trim().slice(0,14)).join('|');
+        t.click(); return 'clicked';
       })()
     `);
-    await sleep(600);
+    if (hit !== 'clicked') throw new Error(`下钻「${label}」失败: ${hit}`);
+    await sleep(1500);
   }
+
+  // 选目标（可保存的项）
+  const picked = await cdp.eval(`
+    (() => {
+      const r=document.querySelector('[data-role="save-row-${targetKey}"]');
+      if(!r) return 'no-target';
+      r.click(); return 'clicked';
+    })()
+  `);
+  if (picked !== 'clicked') throw new Error(`选择目标 ${targetKey} 失败: ${picked}`);
+  await sleep(1200);
   await cdp.eval(setValue('[data-role="draft-title"]', title));
   await sleep(300);
   await cdp.eval(`(() => { const b=document.querySelector('[data-role="confirm-save-draft"]'); if(!b) return 'no-btn'; b.click(); return 'clicked'; })()`);
@@ -136,12 +152,18 @@ async function main() {
   const dialogOnFresh = await cdp.eval(`
     (() => {
       const d=document.querySelector('[data-role="save-draft-dialog"]');
-      return d ? { open:true, 落点数:d.querySelectorAll('[data-role^="target-"]').length } : { open:false };
+      if(!d) return { open:false };
+      return {
+        open:true,
+        列表: [...d.querySelectorAll('[data-role^="save-row-"]')].map(b=>(b.textContent||'').trim().slice(0,10)),
+        有位置面包屑: !!d.querySelector('[data-role="save-crumbs"]'),
+      };
     })()
   `);
   console.log('   点保存后:', JSON.stringify(dialogOnFresh));
   check('点了就弹出选择保存位置的窗口', dialogOnFresh.open, JSON.stringify(dialogOnFresh));
-  check('弹窗里有可选的落点', (dialogOnFresh.落点数 || 0) === 6, `count=${dialogOnFresh.落点数}`);
+  check('弹窗里有可进入的位置', (dialogOnFresh.列表 || []).length >= 2, JSON.stringify(dialogOnFresh.列表));
+  check('弹窗按「位置」组织（面包屑）', dialogOnFresh.有位置面包屑);
   await cdp.eval(`(() => { const d=document.querySelector('[data-role="save-draft-dialog"]'); const b=[...d.querySelectorAll('button')].find(x=>(x.textContent||'').trim()==='取消'); if(b) b.click(); return 'ok'; })()`);
   await sleep(1000);
   // 回到选中该作品的干净状态，继续后面的用例
@@ -167,8 +189,8 @@ async function main() {
   check('面包屑显示「未保存文本」', opened.面包屑 === '未保存文本', JSON.stringify(opened.面包屑));
   check('不是正文编辑器', !opened.有正文编辑器);
 
-  // ===== ③ 点保存弹窗 =====
-  console.log('\n【③ 保存弹窗】');
+  // ===== ③ 保存弹窗（Windows「另存为」式：位置面包屑 + 可下钻列表 + 文件名） =====
+  console.log('\n【③ 保存弹窗布局】');
   await cdp.eval(setValue('[data-role="draft-content"]', '这是草稿里的内容。'));
   await sleep(300);
   await cdp.eval(`(() => { const b=document.querySelector('[data-role="draft-save"]'); if(!b) return 'no-btn'; b.click(); return 'clicked'; })()`);
@@ -177,31 +199,99 @@ async function main() {
     (() => {
       const d=document.querySelector('[data-role="save-draft-dialog"]');
       if(!d) return { open:false };
+      const rows=[...d.querySelectorAll('[data-role^="save-row-"]')];
       return {
         open:true,
-        落点类型: [...d.querySelectorAll('[data-role^="target-"]')].map(b=>(b.textContent||'').trim()),
-        有名称输入: !!d.querySelector('[data-role="draft-title"]'),
+        有位置面包屑: !!d.querySelector('[data-role="save-crumbs"]'),
+        面包屑段: [...d.querySelectorAll('[data-role="save-crumbs"] button')].map(b=>(b.textContent||'').trim()),
+        一级列表: rows.map(b=>(b.textContent||'').trim().slice(0,12)),
+        有文件名输入: !!d.querySelector('[data-role="draft-title"]'),
+        有保存按钮: !!d.querySelector('[data-role="confirm-save-draft"]'),
+        有预览: (d.textContent||'').includes('内容预览'),
       };
     })()
   `);
   console.log('   弹窗:', JSON.stringify(dlg));
-  check('弹出「保存到」弹窗', dlg.open);
-  check('提供 6 类落点', (dlg.落点类型 || []).length === 6, JSON.stringify(dlg.落点类型));
-  check('含「某分卷下的新章节」', (dlg.落点类型 || []).some((x) => x.includes('分卷下的新章节')));
-  check('含「分卷外章节」', (dlg.落点类型 || []).some((x) => x.includes('分卷外章节')));
-  check('含细纲（卷纲/章纲）', (dlg.落点类型 || []).filter((x) => x.includes('细纲')).length === 2);
-  check('含角色子项', (dlg.落点类型 || []).some((x) => x.includes('角色')));
-  check('含世界观', (dlg.落点类型 || []).some((x) => x.includes('世界观')));
-  check('有名称输入框', dlg.有名称输入);
+  check('弹出「保存到」窗口', dlg.open);
+  check('有「位置」面包屑', dlg.有位置面包屑);
+  check('面包屑首段是作品名', (dlg.面包屑段 || [])[0] === book.title, JSON.stringify(dlg.面包屑段));
+  check('一级列出「目录」「相关」', (dlg.一级列表 || []).some((x) => x.startsWith('目录')) && (dlg.一级列表 || []).some((x) => x.startsWith('相关')),
+    JSON.stringify(dlg.一级列表));
+  check('有「文件名」输入框', dlg.有文件名输入);
+  check('有保存/取消按钮', dlg.有保存按钮);
+  check('有内容预览', dlg.有预览);
+
+  // 逐级下钻：目录 → 分卷 → 新建章节
+  // 注意：行的 data-role 是 save-row-<key>（如 save-row-toc / save-row-vol:<id>），
+  // 所以按标签匹配时要取元素文本，而不是用 role 前缀筛。
+  const rowsNow = `
+    (() => {
+      const d=document.querySelector('[data-role="save-draft-dialog"]');
+      if(!d) return { 面包屑:[], 列表:[] };
+      return {
+        面包屑: [...d.querySelectorAll('[data-role="save-crumbs"] button')].map(b=>(b.textContent||'').trim()),
+        列表: [...d.querySelectorAll('[data-role^="save-row-"]')].map(b=>({
+          文本:(b.textContent||'').trim(),
+          角色:b.getAttribute('data-role'),
+          类型:b.getAttribute('data-row-kind'),
+        })),
+      };
+    })()
+  `;
+  const clickRowByText = (label) => `
+    (() => {
+      const rows=[...document.querySelectorAll('[data-role^="save-row-"]')]
+        .filter(b=>b.getAttribute('data-row-kind')!=='disabled');
+      const t=rows.find(b=>(b.textContent||'').trim().startsWith(${JSON.stringify(label)}));
+      if(!t) return 'not-found';
+      t.click(); return 'clicked';
+    })()
+  `;
+
+  console.log('   下钻 目录 → 分卷:');
+  const drill1 = await cdp.eval(clickRowByText('目录'));
+  await sleep(1500);
+  const lvl2 = await cdp.eval(rowsNow);
+  console.log('     ', drill1, JSON.stringify(lvl2));
+  check('进入「目录」后面包屑增加一段', (lvl2.面包屑 || []).includes('目录'), JSON.stringify(lvl2.面包屑));
+  check('列出分卷与分卷外章节',
+    (lvl2.列表 || []).some((x) => x.文本.startsWith('第1卷')) && (lvl2.列表 || []).some((x) => x.文本.startsWith('分卷外章节')),
+    JSON.stringify((lvl2.列表 || []).map((x) => x.文本)));
+
+  const drill2 = await cdp.eval(clickRowByText('第1卷'));
+  await sleep(1500);
+  const lvl3 = await cdp.eval(rowsNow);
+  console.log('     ', drill2, JSON.stringify(lvl3));
+  check('进入分卷后出现「新建章节」',
+    (lvl3.列表 || []).some((x) => x.文本.startsWith('新建章节')), JSON.stringify((lvl3.列表 || []).map((x) => x.文本)));
+  check('并列展示已有章节（仅展示，不可选）',
+    (lvl3.列表 || []).some((x) => x.文本.startsWith('第1章') && x.类型 === 'disabled'),
+    JSON.stringify((lvl3.列表 || []).map((x) => ({ t: x.文本, k: x.类型 }))));
+
+  // 点「新建章节」→ 文件名自动预填
+  await cdp.eval(clickRowByText('新建章节'));
+  await sleep(1200);
+  const prefill = await cdp.eval(`(document.querySelector('[data-role="draft-title"]')||{}).value`);
+  console.log('     默认文件名:', JSON.stringify(prefill));
+  check('选中后文件名自动预填', !!prefill && prefill.includes('第'), JSON.stringify(prefill));
+  // 点面包屑第一段回到本书
+  await cdp.eval(`(() => { const b=document.querySelector('[data-role="crumb-0"]'); if(!b) return 'no-btn'; b.click(); return 'clicked'; })()`);
+  await sleep(1200);
+  const backRoot = await cdp.eval(`
+    [...document.querySelectorAll('[data-role^="save-row-"]')].map(b=>(b.textContent||'').trim())
+  `);
+  check('点面包屑可回到上一层', (backRoot || []).some((x) => x.startsWith('目录')) && (backRoot || []).some((x) => x.startsWith('相关')),
+    JSON.stringify(backRoot));
+  // 取消
   await cdp.eval(`(() => { const d=document.querySelector('[data-role="save-draft-dialog"]'); const b=[...d.querySelectorAll('button')].find(x=>(x.textContent||'').trim()==='取消'); if(b) b.click(); return 'ok'; })()`);
   await sleep(1200);
   check('取消后弹窗关闭', !(await cdp.eval(`!!document.querySelector('[data-role="save-draft-dialog"]')`)));
 
-  // ===== ④ 各落点逐一验证 =====
+  // ===== ④ 各落点逐一验证（按下钻路径） =====
   console.log('\n【④ 存成：分卷下的新章节】');
   await newTextAndSave(cdp, {
-    kind: 'chapter_in_volume', title: '第9章 草稿章节', content: '分卷内章节内容。',
-    picker: { selector: '[data-role="pick-volume"]', value: vol.id },
+    drill: ['目录', `第1卷`], targetKey: 'new-chapter',
+    title: '第9章 草稿章节', content: '分卷内章节内容。',
   });
   let chs = (await J('GET', `/volumes/${vol.id}/chapters`)).body.data;
   const newCh = chs.find((c) => c.title === '第9章 草稿章节');
@@ -221,7 +311,10 @@ async function main() {
   check('路径更新为该章节', (await cdp.eval(crumb) || '').includes('第9章 草稿章节'), await cdp.eval(crumb));
 
   console.log('\n【④ 存成：分卷外章节】');
-  await newTextAndSave(cdp, { kind: 'chapter_default', title: '第1章 卷外章节', content: '分卷外内容。' });
+  await newTextAndSave(cdp, {
+    drill: ['目录', '分卷外章节'], targetKey: 'new-default-chapter',
+    title: '第1章 卷外章节', content: '分卷外内容。',
+  });
   const vols2 = (await J('GET', `/books/${book.id}/volumes`)).body.data;
   const defVol = vols2.find((v) => v.title === '默认');
   check('自动创建了「默认」卷', !!defVol, vols2.map((v) => v.title).join(','));
@@ -229,15 +322,17 @@ async function main() {
   check('分卷外章节已创建', defChs.some((c) => c.title === '第1章 卷外章节'), defChs.map((c) => c.title).join(','));
 
   console.log('\n【④ 存成：细纲 · 新卷纲】');
-  await newTextAndSave(cdp, { kind: 'outline_volume', title: '草稿卷纲', content: '卷纲内容。' });
+  await newTextAndSave(cdp, {
+    drill: ['相关', '细纲'], targetKey: 'new-volume-outline',
+    title: '草稿卷纲', content: '卷纲内容。',
+  });
   let outlines = (await J('GET', `/books/${book.id}/outlines`)).body.data;
   check('新卷纲已创建', outlines.volumes.some((v) => v.title === '草稿卷纲'), outlines.volumes.map((v) => v.title).join(','));
 
   console.log('\n【④ 存成：细纲 · 新章纲】');
-  const parentId = outlines.volumes.find((v) => v.title === '草稿卷纲')?.id;
   await newTextAndSave(cdp, {
-    kind: 'outline_chapter', title: '草稿章纲', content: '章纲内容。',
-    picker: { selector: '[data-role="pick-parent-outline"]', value: parentId },
+    drill: ['相关', '细纲', '草稿卷纲'], targetKey: 'new-chapter-outline',
+    title: '草稿章纲', content: '章纲内容。',
   });
   outlines = (await J('GET', `/books/${book.id}/outlines`)).body.data;
   const newOutlineCh = outlines.chapters.find((c) => c.title === '草稿章纲');
@@ -247,8 +342,8 @@ async function main() {
   console.log('\n【④ 存成：角色 · 子项】');
   const chars = (await J('GET', `/books/${book.id}/characters`)).body.data;
   await newTextAndSave(cdp, {
-    kind: 'character_section', title: '草稿子项', content: '子项内容。',
-    picker: { selector: '[data-role="pick-character"]', value: chars[0].id },
+    drill: ['相关', '角色', chars[0].name], targetKey: 'new-section',
+    title: '草稿子项', content: '子项内容。',
   });
   const secs = (await J('GET', `/books/${book.id}/characters/sections`)).body.data;
   const newSec = secs.find((s) => s.title === '草稿子项');
@@ -256,7 +351,10 @@ async function main() {
   check('子项内容随草稿写入', (newSec?.content || '').includes('子项内容'));
 
   console.log('\n【④ 存成：世界观 · 其他补充】');
-  await newTextAndSave(cdp, { kind: 'world_setting', title: '草稿设定', content: '设定内容。' });
+  await newTextAndSave(cdp, {
+    drill: ['相关', '世界观'], targetKey: 'new-world',
+    title: '草稿设定', content: '设定内容。',
+  });
   const wsList = (await J('GET', `/books/${book.id}/world-settings`)).body.data;
   const newWs = wsList.find((s) => s.title === '草稿设定');
   check('世界观条目已创建', !!newWs, wsList.map((s) => s.title).join(','));

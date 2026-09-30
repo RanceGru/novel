@@ -86,6 +86,7 @@ export default function DraftEditor() {
         <SaveDraftDialog
           open={dialogOpen}
           bookId={targetBookId}
+          bookTitle={currentBook?.title || books.find((b) => b.id === targetBookId)?.title || ''}
           content={content}
           onClose={() => setDialogOpen(false)}
           onSaved={async (info) => {
