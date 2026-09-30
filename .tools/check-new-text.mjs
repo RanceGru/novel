@@ -213,17 +213,17 @@ async function main() {
   `);
   console.log('   弹窗:', JSON.stringify(dlg));
   check('弹出「保存到」窗口', dlg.open);
-  check('有「位置」面包屑', dlg.有位置面包屑);
-  check('面包屑首段是作品名', (dlg.面包屑段 || [])[0] === book.title, JSON.stringify(dlg.面包屑段));
-  check('一级列出「目录」「相关」', (dlg.一级列表 || []).some((x) => x.startsWith('目录')) && (dlg.一级列表 || []).some((x) => x.startsWith('相关')),
+  check('有「位置」面包屑区', dlg.有位置面包屑);
+  // 打开时还没选作品：面包屑为空并提示选择，一级列表是「作品」列表
+  check('未选作品时面包屑为空（提示选择）', (dlg.面包屑段 || []).length === 0, JSON.stringify(dlg.面包屑段));
+  check('一级列出作品供选择', (dlg.一级列表 || []).some((x) => x.startsWith(book.title.slice(0, 6))),
     JSON.stringify(dlg.一级列表));
   check('有「文件名」输入框', dlg.有文件名输入);
   check('有保存/取消按钮', dlg.有保存按钮);
   check('有内容预览', dlg.有预览);
 
-  // 逐级下钻：目录 → 分卷 → 新建章节
-  // 注意：行的 data-role 是 save-row-<key>（如 save-row-toc / save-row-vol:<id>），
-  // 所以按标签匹配时要取元素文本，而不是用 role 前缀筛。
+  // 逐级下钻：作品 → 目录 → 分卷 → 新建章节
+  // 注意：行的 data-role 是 save-row-<key>，按标签匹配时取元素文本更稳。
   const rowsNow = `
     (() => {
       const d=document.querySelector('[data-role="save-draft-dialog"]');
@@ -248,7 +248,24 @@ async function main() {
     })()
   `;
 
-  console.log('   下钻 目录 → 分卷:');
+  // 最上层应先列作品
+  const lvl1 = await cdp.eval(rowsNow);
+  console.log('   一级（作品列表）:', JSON.stringify((lvl1.列表 || []).map((x) => x.文本)));
+  check('最上层列出所有作品供选择',
+    (lvl1.列表 || []).some((x) => x.文本.startsWith(book.title)),
+    JSON.stringify((lvl1.列表 || []).map((x) => x.文本)));
+  check('未选作品时面包屑提示选择', (lvl1.面包屑 || []).length === 0, JSON.stringify(lvl1.面包屑));
+
+  console.log('   下钻 作品 → 目录:');
+  const drill0 = await cdp.eval(clickRowByText(book.title));
+  await sleep(2000);
+  const lvl1b = await cdp.eval(rowsNow);
+  console.log('     ', drill0, JSON.stringify(lvl1b));
+  check('选中作品后面包屑显示作品名', (lvl1b.面包屑 || []).includes(book.title), JSON.stringify(lvl1b.面包屑));
+  check('作品下列出目录与相关',
+    (lvl1b.列表 || []).some((x) => x.文本.startsWith('目录')) && (lvl1b.列表 || []).some((x) => x.文本.startsWith('相关')),
+    JSON.stringify((lvl1b.列表 || []).map((x) => x.文本)));
+
   const drill1 = await cdp.eval(clickRowByText('目录'));
   await sleep(1500);
   const lvl2 = await cdp.eval(rowsNow);
@@ -258,10 +275,23 @@ async function main() {
     (lvl2.列表 || []).some((x) => x.文本.startsWith('第1卷')) && (lvl2.列表 || []).some((x) => x.文本.startsWith('分卷外章节')),
     JSON.stringify((lvl2.列表 || []).map((x) => x.文本)));
 
-  const drill2 = await cdp.eval(clickRowByText('第1卷'));
+  // 「上一层」按键应可用，并能退回作品层
+  const upDisabled = await cdp.eval(`(document.querySelector('[data-role="crumb-up"]')||{}).disabled`);
+  check('「上一层」按键可用', upDisabled === false, String(upDisabled));
+  await cdp.eval(`(() => { const b=document.querySelector('[data-role="crumb-up"]'); if(!b) return 'no-btn'; b.click(); return 'clicked'; })()`);
+  await sleep(1500);
+  const afterUp = await cdp.eval(rowsNow);
+  console.log('     上一层 →', JSON.stringify(afterUp.面包屑));
+  check('点「上一层」回退到作品层',
+    (afterUp.面包屑 || []).includes(book.title) && !(afterUp.面包屑 || []).includes('目录'),
+    JSON.stringify(afterUp.面包屑));
+  // 回到分卷继续后面的断言
+  await cdp.eval(clickRowByText('目录'));
+  await sleep(1500);
+  await cdp.eval(clickRowByText('第1卷'));
   await sleep(1500);
   const lvl3 = await cdp.eval(rowsNow);
-  console.log('     ', drill2, JSON.stringify(lvl3));
+  console.log('     进入分卷:', JSON.stringify(lvl3.面包屑));
   check('进入分卷后出现「新建章节」',
     (lvl3.列表 || []).some((x) => x.文本.startsWith('新建章节')), JSON.stringify((lvl3.列表 || []).map((x) => x.文本)));
   check('并列展示已有章节（仅展示，不可选）',
@@ -274,13 +304,14 @@ async function main() {
   const prefill = await cdp.eval(`(document.querySelector('[data-role="draft-title"]')||{}).value`);
   console.log('     默认文件名:', JSON.stringify(prefill));
   check('选中后文件名自动预填', !!prefill && prefill.includes('第'), JSON.stringify(prefill));
-  // 点面包屑第一段回到本书
-  await cdp.eval(`(() => { const b=document.querySelector('[data-role="crumb-0"]'); if(!b) return 'no-btn'; b.click(); return 'clicked'; })()`);
-  await sleep(1200);
+  // 点面包屑里的作品段（crumb-1）→ 回到作品层（列出目录/相关）
+  await cdp.eval(`(() => { const b=document.querySelector('[data-role="crumb-1"]'); if(!b) return 'no-btn'; b.click(); return 'clicked'; })()`);
+  await sleep(1500);
   const backRoot = await cdp.eval(`
     [...document.querySelectorAll('[data-role^="save-row-"]')].map(b=>(b.textContent||'').trim())
   `);
-  check('点面包屑可回到上一层', (backRoot || []).some((x) => x.startsWith('目录')) && (backRoot || []).some((x) => x.startsWith('相关')),
+  check('点面包屑里的作品可回到作品层（目录/相关）',
+    (backRoot || []).some((x) => x.startsWith('目录')) && (backRoot || []).some((x) => x.startsWith('相关')),
     JSON.stringify(backRoot));
   // 取消
   await cdp.eval(`(() => { const d=document.querySelector('[data-role="save-draft-dialog"]'); const b=[...d.querySelectorAll('button')].find(x=>(x.textContent||'').trim()==='取消'); if(b) b.click(); return 'ok'; })()`);
@@ -290,7 +321,7 @@ async function main() {
   // ===== ④ 各落点逐一验证（按下钻路径） =====
   console.log('\n【④ 存成：分卷下的新章节】');
   await newTextAndSave(cdp, {
-    drill: ['目录', `第1卷`], targetKey: 'new-chapter',
+    drill: [book.title, '目录', `第1卷`], targetKey: 'new-chapter',
     title: '第9章 草稿章节', content: '分卷内章节内容。',
   });
   let chs = (await J('GET', `/volumes/${vol.id}/chapters`)).body.data;
@@ -312,7 +343,7 @@ async function main() {
 
   console.log('\n【④ 存成：分卷外章节】');
   await newTextAndSave(cdp, {
-    drill: ['目录', '分卷外章节'], targetKey: 'new-default-chapter',
+    drill: [book.title, '目录', '分卷外章节'], targetKey: 'new-default-chapter',
     title: '第1章 卷外章节', content: '分卷外内容。',
   });
   const vols2 = (await J('GET', `/books/${book.id}/volumes`)).body.data;
@@ -323,7 +354,7 @@ async function main() {
 
   console.log('\n【④ 存成：细纲 · 新卷纲】');
   await newTextAndSave(cdp, {
-    drill: ['相关', '细纲'], targetKey: 'new-volume-outline',
+    drill: [book.title, '相关', '细纲'], targetKey: 'new-volume-outline',
     title: '草稿卷纲', content: '卷纲内容。',
   });
   let outlines = (await J('GET', `/books/${book.id}/outlines`)).body.data;
@@ -331,7 +362,7 @@ async function main() {
 
   console.log('\n【④ 存成：细纲 · 新章纲】');
   await newTextAndSave(cdp, {
-    drill: ['相关', '细纲', '草稿卷纲'], targetKey: 'new-chapter-outline',
+    drill: [book.title, '相关', '细纲', '草稿卷纲'], targetKey: 'new-chapter-outline',
     title: '草稿章纲', content: '章纲内容。',
   });
   outlines = (await J('GET', `/books/${book.id}/outlines`)).body.data;
@@ -342,7 +373,7 @@ async function main() {
   console.log('\n【④ 存成：角色 · 子项】');
   const chars = (await J('GET', `/books/${book.id}/characters`)).body.data;
   await newTextAndSave(cdp, {
-    drill: ['相关', '角色', chars[0].name], targetKey: 'new-section',
+    drill: [book.title, '相关', '角色', chars[0].name], targetKey: 'new-section',
     title: '草稿子项', content: '子项内容。',
   });
   const secs = (await J('GET', `/books/${book.id}/characters/sections`)).body.data;
@@ -352,7 +383,7 @@ async function main() {
 
   console.log('\n【④ 存成：世界观 · 其他补充】');
   await newTextAndSave(cdp, {
-    drill: ['相关', '世界观'], targetKey: 'new-world',
+    drill: [book.title, '相关', '世界观'], targetKey: 'new-world',
     title: '草稿设定', content: '设定内容。',
   });
   const wsList = (await J('GET', `/books/${book.id}/world-settings`)).body.data;

@@ -19,11 +19,9 @@ export default function DraftEditor() {
   const content = draftText ?? '';
 
   /**
-   * 草稿要落到哪本书里。
-   * 优先用当前选中的作品；没选时兜底用作品列表里的第一本
-   * （此前没选作品时「保存」按钮直接禁用，用户点了没反应，体验上像坏了）。
+   * 草稿要落到哪本书里 —— 现在由弹窗自己列出所有作品让用户选，
+   * 这里只需要判断「有没有作品可存」。
    */
-  const targetBookId = currentBook?.id || books[0]?.id || null;
 
   /**
    * 打开刚保存出来的章节（走正常正文编辑器，自动保存等逻辑与目录选章一致）。
@@ -82,11 +80,10 @@ export default function DraftEditor() {
         <span className="ml-auto">点「保存」选择存放位置</span>
       </div>
 
-      {targetBookId ? (
+      {/* 保存位置改由弹窗内自己选：先列作品，再选目录/相关往下钻，故不再传 bookId */}
+      {books.length ? (
         <SaveDraftDialog
           open={dialogOpen}
-          bookId={targetBookId}
-          bookTitle={currentBook?.title || books.find((b) => b.id === targetBookId)?.title || ''}
           content={content}
           onClose={() => setDialogOpen(false)}
           onSaved={async (info) => {
@@ -94,7 +91,8 @@ export default function DraftEditor() {
             clearDraft();
             if (info.volumeId) {
               // 保存成了章节：直接打开该章节（走正常正文编辑器，自动保存等逻辑一致）
-              openChapter(targetBookId, info.volumeId, info.id, info.title,
+              // bookId 由弹窗回传（作品是在弹窗里选的）
+              openChapter(info.bookId, info.volumeId, info.id, info.title,
                 info.chapterNumber || 1, info.volumeTitle, info.volumeNumber || 0);
             } else {
               // 保存成了条目（细纲/角色子项/世界观）：切到条目编辑器

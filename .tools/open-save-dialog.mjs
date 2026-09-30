@@ -46,6 +46,14 @@ await ev(`
 await sleep(400);
 console.log('点保存:', await ev(`(() => { const b=document.querySelector('[data-role="draft-save"]'); if(!b) return 'no-btn'; b.click(); return 'clicked'; })()`));
 await sleep(2500);
+
+// 先截「最上层：作品列表」
+let shot = await send('Page.captureScreenshot', { format: 'jpeg', quality: 80 });
+if (shot && shot.data) {
+  writeFileSync('E:/project/novel/.tools/shots/save-as-books.jpg', Buffer.from(shot.data, 'base64'));
+  console.log('截图1（作品列表）已保存');
+}
+
 const clickRow = (label) => `
   (() => {
     const rows=[...document.querySelectorAll('[data-role^="save-row-"]')].filter(r=>r.getAttribute('data-row-kind')!=='disabled');
@@ -53,15 +61,17 @@ const clickRow = (label) => `
     if(!t) return 'not-found'; t.click(); return 'clicked';
   })()
 `;
+console.log('进入作品:', await ev(clickRow(book.title)));
+await sleep(2000);
 console.log('进入目录:', await ev(clickRow('目录')));
 await sleep(1500);
 console.log('进入分卷:', await ev(clickRow('第1卷')));
 await sleep(1500);
 console.log('选中新建章节:', await ev(clickRow('新建章节')));
 await sleep(1200);
-const shot = await send('Page.captureScreenshot', { format: 'jpeg', quality: 80 });
+shot = await send('Page.captureScreenshot', { format: 'jpeg', quality: 80 });
 if (shot && shot.data) {
   writeFileSync('E:/project/novel/.tools/shots/save-as-dialog.jpg', Buffer.from(shot.data, 'base64'));
-  console.log('截图已保存');
+  console.log('截图2（下钻到章节）已保存');
 }
 ws.close();
