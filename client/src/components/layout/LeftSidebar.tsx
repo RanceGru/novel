@@ -266,6 +266,11 @@ export default function LeftSidebar() {
             className="w-full px-3 py-2 text-xs bg-bg-primary text-text-primary border border-border-primary rounded hover:bg-bg-hover transition-colors flex items-center gap-2">
             <Library size={16} /> 新建作品
           </button>
+          {/* 新建文本：在中间开一块空白文本，保存时再选落到书里哪个位置 */}
+          <button data-role="new-text" onClick={() => useEditorStore.getState().newDraft()}
+            className="w-full px-3 py-2 text-xs bg-bg-primary text-text-primary border border-border-primary rounded hover:bg-bg-hover transition-colors flex items-center gap-2">
+            <FilePlus size={16} /> 新建文本
+          </button>
         </div>
 
         <BookFormDialog open={showNewBook} onClose={() => setShowNewBook(false)}

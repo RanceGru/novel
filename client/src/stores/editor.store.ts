@@ -53,6 +53,17 @@ interface EditorState {
   /** 设置当前位置（各左栏组件在打开内容时调用） */
   setCurrentPath: (path: string[]) => void;
 
+  /**
+   * 未保存的空白文本（「功能区 → 新建文本」创建）。
+   * 它还不属于书里任何位置，保存时要由用户选择落到哪里。
+   */
+  draftText: string | null;
+  /** 打开一块空白文本（与章节/条目互斥） */
+  newDraft: () => void;
+  setDraftText: (text: string) => void;
+  /** 丢弃草稿（保存成功后或用户关闭时） */
+  clearDraft: () => void;
+
   setCurrentChapter: (bookId: string, volumeId: string, chapterId: string) => void;
   setContent: (content: string) => void;
   setChapterOutline: (outline: string) => void;
@@ -134,14 +145,26 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   editorZoom: 1,
   selectedDoc: null,
   currentPath: [],
+  draftText: null,
 
   setCurrentPath: (path) => set({ currentPath: path }),
+
+  newDraft: () => set({
+    draftText: '',
+    // 与章节/条目互斥：草稿态下中间区域只显示这块空白文本
+    selectedDoc: null,
+    currentChapterId: null, currentVolumeId: null,
+    chapterContent: '', chapterOutline: '', instruction: '',
+    currentPath: ['未保存文本'],
+  }),
+  setDraftText: (text) => set({ draftText: text }),
+  clearDraft: () => set({ draftText: null }),
 
   setCurrentChapter: (bookId, volumeId, chapterId) =>
     set((s) => ({
       currentBookId: bookId, currentVolumeId: volumeId, currentChapterId: chapterId,
-      // 选中章节时关掉条目编辑，保证中间区域只显示一个东西
-      selectedDoc: null,
+      // 选中章节时关掉条目编辑与草稿，保证中间区域只显示一个东西
+      selectedDoc: null, draftText: null,
       // 切换章节也应让纲树重新拉取（章纲快照指纹可能不同）
       outlineVersion: s.outlineVersion + 1,
     })),
@@ -158,10 +181,11 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
 
   selectDoc: (doc) => set((s) => ({
     selectedDoc: doc,
-    // 互斥：打开条目时清掉当前章节，避免中间区域同时有两份内容。
+    // 互斥：打开条目时清掉当前章节与草稿，避免中间区域同时有两份内容。
     // 注意 currentBookId 要保留 —— 保存条目时要用它拼接口路径。
     currentChapterId: null, currentVolumeId: null,
     chapterContent: '', chapterOutline: '', instruction: '',
+    draftText: null,
     // 路径：作品名 > 所在分区 > 条目名
     currentPath: docPath(doc, useProjectStore.getState().currentBook?.title || undefined),
   })),
