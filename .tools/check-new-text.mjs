@@ -115,6 +115,41 @@ async function main() {
   const bText = btns.find((b) => b.文本.includes('新建文本'));
   check('它排在「新建作品」下面', !!bNew && !!bText && bText.top > bNew.top, `作品top=${bNew?.top} 文本top=${bText?.top}`);
 
+  // ===== ①b 「保存」按钮任何时候都可用，点了必须弹窗 =====
+  // 之前没先选作品时该按钮是 disabled，用户点了没反应（看起来像坏了）
+  console.log('\n【①b 保存按钮始终可点并弹窗】');
+  await cdp.send('Page.reload');
+  await sleep(8000);
+  await cdp.eval(`(() => { const b=document.querySelector('[data-role="new-text"]'); if(!b) return 'no-btn'; b.click(); return 'clicked'; })()`);
+  await sleep(1500);
+  const btnState = await cdp.eval(`
+    (() => {
+      const b=document.querySelector('[data-role="draft-save"]');
+      if(!b) return { found:false };
+      return { found:true, 禁用:b.disabled, 透明度:getComputedStyle(b).opacity };
+    })()
+  `);
+  console.log('   未选作品时的按钮:', JSON.stringify(btnState));
+  check('保存按钮未被禁用', btnState.found && !btnState.禁用, JSON.stringify(btnState));
+  await cdp.eval(`(() => { const b=document.querySelector('[data-role="draft-save"]'); if(!b) return 'no-btn'; b.click(); return 'clicked'; })()`);
+  await sleep(3000);
+  const dialogOnFresh = await cdp.eval(`
+    (() => {
+      const d=document.querySelector('[data-role="save-draft-dialog"]');
+      return d ? { open:true, 落点数:d.querySelectorAll('[data-role^="target-"]').length } : { open:false };
+    })()
+  `);
+  console.log('   点保存后:', JSON.stringify(dialogOnFresh));
+  check('点了就弹出选择保存位置的窗口', dialogOnFresh.open, JSON.stringify(dialogOnFresh));
+  check('弹窗里有可选的落点', (dialogOnFresh.落点数 || 0) === 6, `count=${dialogOnFresh.落点数}`);
+  await cdp.eval(`(() => { const d=document.querySelector('[data-role="save-draft-dialog"]'); const b=[...d.querySelectorAll('button')].find(x=>(x.textContent||'').trim()==='取消'); if(b) b.click(); return 'ok'; })()`);
+  await sleep(1000);
+  // 回到选中该作品的干净状态，继续后面的用例
+  await cdp.send('Page.reload');
+  await sleep(8000);
+  console.log('   重新选作品:', await cdp.eval(selectBookInUi(book.title)));
+  await sleep(2500);
+
   // ===== ② 打开空白文本 =====
   console.log('\n【② 打开空白文本】');
   await cdp.eval(`(() => { const b=document.querySelector('[data-role="new-text"]'); if(!b) return 'no-btn'; b.click(); return 'clicked'; })()`);

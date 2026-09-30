@@ -13,9 +13,17 @@ import SaveDraftDialog from './SaveDraftDialog';
 export default function DraftEditor() {
   const { draftText, setDraftText, clearDraft, selectDoc } = useEditorStore();
   const currentBook = useProjectStore((s) => s.currentBook);
+  const books = useProjectStore((s) => s.books);
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const content = draftText ?? '';
+
+  /**
+   * 草稿要落到哪本书里。
+   * 优先用当前选中的作品；没选时兜底用作品列表里的第一本
+   * （此前没选作品时「保存」按钮直接禁用，用户点了没反应，体验上像坏了）。
+   */
+  const targetBookId = currentBook?.id || books[0]?.id || null;
 
   /**
    * 打开刚保存出来的章节（走正常正文编辑器，自动保存等逻辑与目录选章一致）。
@@ -27,12 +35,13 @@ export default function DraftEditor() {
   const openChapter = (bookId: string, volumeId: string, chapterId: string, chapterTitle: string,
     chapterNumber: number, volumeTitle?: string, volumeNumber?: number) => {
     const st = useEditorStore.getState();
+    const bookTitle = currentBook?.title || books.find((b) => b.id === bookId)?.title;
     st.setCurrentChapter(bookId, volumeId, chapterId);
     st.setContent(content);
     st.setChapterOutline('');
     st.setInstruction('');
     st.setCurrentPath([
-      ...(currentBook?.title ? [currentBook.title] : []), '目录',
+      ...(bookTitle ? [bookTitle] : []), '目录',
       ...(volumeTitle && volumeTitle !== '默认' ? [`第${volumeNumber}卷 ${volumeTitle}`] : []),
       `第${chapterNumber}章 ${chapterTitle}`,
     ]);
@@ -46,9 +55,9 @@ export default function DraftEditor() {
           <span data-role="draft-count" className="text-text-tertiary">
             {content.replace(/\s/g, '').length} 字
           </span>
-          <button data-role="draft-save" onClick={() => setDialogOpen(true)} disabled={!currentBook}
-            className="px-2 py-0.5 text-brand-primary hover:bg-bg-hover rounded disabled:opacity-50"
-            title={currentBook ? '保存到指定位置' : '请先选择作品'}>
+          <button data-role="draft-save" onClick={() => setDialogOpen(true)}
+            className="px-2 py-0.5 text-brand-primary hover:bg-bg-hover rounded"
+            title="保存到指定位置">
             <Save size={12} className="inline" /> 保存
           </button>
           <button onClick={clearDraft} className="px-1.5 py-0.5 text-text-tertiary hover:text-text-primary rounded hover:bg-bg-hover"
@@ -73,10 +82,10 @@ export default function DraftEditor() {
         <span className="ml-auto">点「保存」选择存放位置</span>
       </div>
 
-      {currentBook && (
+      {targetBookId ? (
         <SaveDraftDialog
           open={dialogOpen}
-          bookId={currentBook.id}
+          bookId={targetBookId}
           content={content}
           onClose={() => setDialogOpen(false)}
           onSaved={async (info) => {
@@ -84,7 +93,7 @@ export default function DraftEditor() {
             clearDraft();
             if (info.volumeId) {
               // 保存成了章节：直接打开该章节（走正常正文编辑器，自动保存等逻辑一致）
-              openChapter(currentBook.id, info.volumeId, info.id, info.title,
+              openChapter(targetBookId, info.volumeId, info.id, info.title,
                 info.chapterNumber || 1, info.volumeTitle, info.volumeNumber || 0);
             } else {
               // 保存成了条目（细纲/角色子项/世界观）：切到条目编辑器
@@ -95,6 +104,18 @@ export default function DraftEditor() {
             }
           }}
         />
+      ) : (
+        // 一本书都没有时给明确提示，而不是让按钮点了没反应
+        dialogOpen && (
+          <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center" onClick={() => setDialogOpen(false)}>
+            <div className="bg-bg-primary rounded-lg shadow-xl px-5 py-4 text-sm" onClick={(e) => e.stopPropagation()}>
+              <div className="mb-2">还没有作品，无法保存。</div>
+              <div className="text-xs text-text-tertiary mb-3">请先在左侧「新建作品」创建一本书。</div>
+              <button onClick={() => setDialogOpen(false)}
+                className="px-3 py-1 text-xs bg-brand-primary text-brand-text rounded">知道了</button>
+            </div>
+          </div>
+        )
       )}
     </div>
   );
