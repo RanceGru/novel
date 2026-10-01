@@ -35,7 +35,7 @@ interface EditorState {
   instruction: string;
   isGenerating: boolean;
   generationError: string | null;
-  rightPanelTab: 'outline' | 'instruction' | 'review' | 'memory' | 'settings';
+  rightPanelTab: 'instruction' | 'review' | 'memory' | 'settings';
   showRightPanel: boolean;
   showChatPanel: boolean;
   editorZoom: number;
@@ -141,7 +141,7 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   instruction: '',
   isGenerating: false,
   generationError: null,
-  rightPanelTab: 'outline',
+  rightPanelTab: 'instruction',
   showRightPanel: true,
   showChatPanel: false,
   editorZoom: 1,

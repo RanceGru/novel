@@ -96,7 +96,7 @@ async function main() {
     })()
   `);
   await sleep(1500);
-  // 注意作用域：右侧「章纲（快照）」面板本来就有文本域，不能统计全页
+  // 注意作用域：右栏（写作指令等）本来就有文本域，不能统计全页
   const afterClick = await cdp.eval(`
     (() => {
       const header=document.querySelector('[data-role="world-header"]');

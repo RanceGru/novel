@@ -1,8 +1,8 @@
-// 右侧面板 — 章节纲（快照）/指令编辑 & AI 生成控制
+// 右侧面板 — 写作指令编辑 & AI 生成控制
 //
-// 说明：「章节纲（快照）」对应 chapters.chapter_outline —— 生成正文时使用的纲副本。
-// 权威源在纲树的「章纲」（outlines.content）。章纲改动后此处不会被自动覆盖，
-// 只在纲树侧提示「章纲有改动」，由用户决定是否重新生成。
+// 说明：章纲已不再在右栏以「快照」形式编辑，权威源统一在纲树的「章纲」（outlines.content）。
+// 生成正文时使用的章纲副本由 editor.store 的 chapterOutline 提供（选中章节时载入），
+// 章纲改动后只在纲树侧提示「章纲有改动」，由用户决定是否重新生成。
 import { useState } from 'react';
 import { useEditorStore } from '../../stores/editor.store';
 import { useAuthStore } from '../../stores/auth.store';
@@ -14,7 +14,6 @@ export default function RightPanel() {
   const {
     chapterOutline,
     instruction,
-    setChapterOutline,
     setInstruction,
     isGenerating,
     setGenerating,
@@ -103,17 +102,16 @@ export default function RightPanel() {
   };
 
   return (
-    <aside className="w-80 bg-bg-secondary border-l border-border-primary flex flex-col shrink-0 overflow-hidden">
+    <aside data-role="right-panel" className="w-80 bg-bg-secondary border-l border-border-primary flex flex-col shrink-0 overflow-hidden">
       {/* Tab 切换 */}
       <div className="flex border-b border-border-primary text-xs">
         {([
-          { key: 'outline', label: '📝 章纲' },
           { key: 'instruction', label: '📋 指令' },
           { key: 'review', label: '🔍 审查' },
           { key: 'memory', label: '🧠 记忆' },
           { key: 'settings', label: '⚙ 设定' },
         ] as const).map(({ key, label }) => (
-          <button key={key}
+          <button key={key} data-role="right-panel-tab" data-tab={key}
             className={`flex-1 py-2 text-center transition-colors ${rightPanelTab === key ? 'text-brand-primary border-b-2 border-brand-primary font-medium' : 'text-text-tertiary hover:text-text-secondary'}`}
             onClick={() => useEditorStore.getState().setRightPanelTab(key)}
           >{label}</button>
@@ -122,18 +120,6 @@ export default function RightPanel() {
 
       {/* 内容区 */}
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
-        {rightPanelTab === 'outline' && (
-          <>
-            <label className="text-xs font-medium text-text-secondary">章节纲（快照）</label>
-            <textarea
-              className="w-full h-60 p-2 text-sm border border-border-primary rounded bg-bg-primary text-text-primary resize-none focus:outline-none focus:border-brand-primary"
-              placeholder="在此编辑章纲...&#10;&#10;章节核心情节：&#10;1.&#10;2.&#10;3."
-              value={chapterOutline}
-              onChange={(e) => setChapterOutline(e.target.value)}
-            />
-          </>
-        )}
-
         {rightPanelTab === 'instruction' && (
           <>
             <label className="text-xs font-medium text-text-secondary">写作指令</label>
@@ -189,6 +175,7 @@ export default function RightPanel() {
           </button>
         ) : (
           <button
+            data-role="generate-content"
             className="w-full py-2 bg-brand-primary text-brand-text rounded text-sm hover:bg-brand-hover transition-colors flex items-center justify-center gap-2"
             onClick={handleGenerate}
           >
