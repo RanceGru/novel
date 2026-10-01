@@ -55,8 +55,9 @@ export default function EditorShell({
         <span className="ml-auto flex items-center gap-2 shrink-0">
           {statusSlot}
           {onSave && (
+            // 与右侧栏「生成正文」同款：实心主题色底 + 反白图标文字
             <button data-role={saveRole} onClick={onSave} disabled={saveDisabled || saving}
-              className="px-2 py-0.5 text-brand-primary hover:bg-bg-hover rounded flex items-center gap-1 disabled:opacity-50"
+              className="px-2.5 py-1 bg-brand-primary text-brand-text rounded hover:bg-brand-hover transition-colors flex items-center gap-1 disabled:opacity-50"
               title="保存 (Ctrl+S)">
               <Save size={12} /> {saving ? '保存中...' : saveLabel}
             </button>

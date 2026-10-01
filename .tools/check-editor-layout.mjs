@@ -86,6 +86,32 @@ const layoutProbe = (boxSel) => `
         const btn=[...shell.querySelectorAll('button')].find(x=>(x.title||'').startsWith('保存'));
         return btn ? (btn.textContent||'').trim() : null;
       })(),
+      // 保存按钮配色：应与右侧栏「生成正文」一致（实心主题色 + 反白文字）
+      保存按钮配色: (() => {
+        const btn=[...shell.querySelectorAll('button')].find(x=>(x.title||'').startsWith('保存'));
+        if(!btn) return null;
+        const cs=getComputedStyle(btn);
+        const svg=btn.querySelector('svg');
+        return {
+          背景: cs.backgroundColor,
+          文字色: cs.color,
+          图标色: svg ? getComputedStyle(svg).color : null,
+          圆角: cs.borderTopLeftRadius,
+        };
+      })(),
+      // 用于对照的「生成正文」按钮配色
+      生成正文配色: (() => {
+        const btn=[...document.querySelectorAll('button')].find(x=>(x.textContent||'').includes('生成正文'));
+        if(!btn) return null;
+        const cs=getComputedStyle(btn);
+        const svg=btn.querySelector('svg');
+        return {
+          背景: cs.backgroundColor,
+          文字色: cs.color,
+          图标色: svg ? getComputedStyle(svg).color : null,
+          圆角: cs.borderTopLeftRadius,
+        };
+      })(),
       // 面包屑后面那个「·」分隔符是否存在（说明有标题区）
       有标题分隔符: !!shell.querySelector('.text-text-tertiary.shrink-0'),
     };
@@ -193,6 +219,27 @@ async function main() {
     check('章节编辑器有底栏', !!chapterLayout.底栏, JSON.stringify(chapterLayout.底栏));
     check('底栏字数与「Ctrl+S」提示都在', /字/.test(chapterLayout.底栏?.文字 || '') && /Ctrl\+S/.test(chapterLayout.底栏?.文字 || ''),
       JSON.stringify(chapterLayout.底栏?.文字));
+
+    // 保存按钮配色应与右侧栏「生成正文」一致（实心主题色 + 反白文字/图标）
+    console.log('\n【④ 保存按钮配色】');
+    const ref = chapterLayout.生成正文配色;
+    console.log('   生成正文按钮:', JSON.stringify(ref));
+    console.log('   保存按钮:', JSON.stringify(chapterLayout.保存按钮配色));
+    check('取到了「生成正文」按钮做基准', !!ref, JSON.stringify(ref));
+    check('保存按钮背景与「生成正文」一致', chapterLayout.保存按钮配色?.背景 === ref?.背景,
+      `保存=${chapterLayout.保存按钮配色?.背景} 生成正文=${ref?.背景}`);
+    check('保存按钮文字色与「生成正文」一致', chapterLayout.保存按钮配色?.文字色 === ref?.文字色,
+      `保存=${chapterLayout.保存按钮配色?.文字色} 生成正文=${ref?.文字色}`);
+    check('保存按钮图标色与「生成正文」一致', chapterLayout.保存按钮配色?.图标色 === ref?.图标色,
+      `保存=${chapterLayout.保存按钮配色?.图标色} 生成正文=${ref?.图标色}`);
+    check('保存按钮是实心主题色（非透明）',
+      !!chapterLayout.保存按钮配色?.背景 && chapterLayout.保存按钮配色.背景 !== 'rgba(0, 0, 0, 0)',
+      String(chapterLayout.保存按钮配色?.背景));
+    check('保存按钮文字为反白（白色）', chapterLayout.保存按钮配色?.文字色 === 'rgb(255, 255, 255)',
+      String(chapterLayout.保存按钮配色?.文字色));
+    check('两个编辑器的保存按钮配色一致',
+      JSON.stringify(chapterLayout.保存按钮配色) === JSON.stringify(itemLayout.保存按钮配色),
+      `章节=${JSON.stringify(chapterLayout.保存按钮配色)} 条目=${JSON.stringify(itemLayout.保存按钮配色)}`);
   }
 
   ws.close();
