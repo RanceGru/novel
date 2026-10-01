@@ -77,6 +77,8 @@ interface EditorState {
   /** 在中间编辑器打开某个条目（会清掉当前章节，两者互斥） */
   selectDoc: (doc: SelectedDoc) => void;
   closeDoc: () => void;
+  /** 关闭当前章节（清掉选中，中间区域回到空白提示） */
+  closeChapter: () => void;
   /** 保存条目内容（按 kind 走各自的接口），成功后刷新对应左栏分区 */
   saveDoc: (content: string, title?: string) => Promise<void>;
 }
@@ -190,6 +192,12 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
     currentPath: docPath(doc, useProjectStore.getState().currentBook?.title || undefined),
   })),
   closeDoc: () => set({ selectedDoc: null }),
+
+  closeChapter: () => set({
+    currentChapterId: null, currentVolumeId: null,
+    chapterContent: '', chapterOutline: '', instruction: '',
+    currentPath: [],
+  }),
 
   saveDoc: async (content, title) => {
     const { selectedDoc } = get();

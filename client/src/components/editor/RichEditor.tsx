@@ -7,10 +7,12 @@
 //     doc 导出出现 <p><p> 嵌套、版本 diff 变脏、后续 embedding 要做剥离
 //   · 写作真正需要的是结构与检索（大纲/章节树/人物卡/伏笔），不是排版
 // 因此这里保持纯文本，落库就是所见即所得。
-import { useEffect, useRef } from 'react';
+//
+// 外壳（工具条/内容区/底栏）与条目编辑器共用 EditorShell，保证两处布局一致。
+import { useEffect, useRef, useState } from 'react';
 import { useEditorStore } from '../../stores/editor.store';
 import { apiClient } from '../../services/api.service';
-import EditorBreadcrumb from './EditorBreadcrumb';
+import EditorShell, { EDITOR_TEXTAREA_CLASS } from './EditorShell';
 
 export default function RichEditor() {
   const {
@@ -21,9 +23,11 @@ export default function RichEditor() {
     chapterOutline,
     instruction,
     isGenerating,
+    closeChapter,
   } = useEditorStore();
 
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
 
   // AI 流式生成时把内容同步到文本框（并在生成结束后把光标放到末尾）
   useEffect(() => {
@@ -48,42 +52,50 @@ export default function RichEditor() {
   // （中文场景下按空白切词没有意义，网文平台也是这个口径）
   const charCount = chapterContent.replace(/\s/g, '').length;
 
-  return (
-    <div className="h-full flex flex-col">
-      {/* 工具条：左侧显示「当前编辑内容的路径」，右侧是字数与保存 */}
-      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border-primary bg-bg-secondary text-xs">
-        <EditorBreadcrumb />
-        <span className="ml-auto flex items-center gap-3 shrink-0">
-          {isGenerating && <span className="text-brand-primary">🤖 AI 生成中...</span>}
-          <span data-role="char-count" className="text-text-tertiary">{charCount} 字</span>
-          {currentChapterId && !isGenerating && (
-            <button onClick={() => debouncedSave(currentChapterId, currentBookId, chapterContent, chapterOutline, instruction, true)}
-              className="px-2 py-0.5 text-brand-primary hover:bg-bg-hover rounded" title="手动保存 (Ctrl+S)">
-              💾 保存
-            </button>
-          )}
-        </span>
-      </div>
+  const saveNow = () => {
+    if (!currentChapterId) return;
+    debouncedSave(currentChapterId, currentBookId, chapterContent, chapterOutline, instruction, true);
+    setSavedAt(Date.now());
+    setTimeout(() => setSavedAt(null), 2000);
+  };
 
-      {/* 编辑区 */}
-      <div className="flex-1 overflow-hidden">
-        <textarea
-          ref={taRef}
-          data-role="chapter-content"
-          defaultValue={chapterContent}
-          onChange={onChange}
-          onKeyDown={(e) => {
-            if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-              e.preventDefault();
-              if (currentChapterId) debouncedSave(currentChapterId, currentBookId, chapterContent, chapterOutline, instruction, true);
-            }
-          }}
-          readOnly={isGenerating}
-          placeholder={'开始创作… 选择左侧章节，或点击右侧「生成正文」让 AI 帮你写\n\n段落之间用空行分隔。'}
-          className="chapter-editor w-full h-full p-6 text-sm leading-relaxed resize-none focus:outline-none font-sans"
-        />
-      </div>
-    </div>
+  return (
+    <EditorShell
+      // 不再重复显示章节标题：面包屑最后一段就是「第N章 章节名」，
+      // 而这里也没法改名（改章节名走目录里的右键菜单），重复一遍只是噪音。
+      // 条目编辑器保留标题区是因为那里的标题可编辑。
+      statusSlot={
+        <>
+          {isGenerating && <span className="text-brand-primary">🤖 AI 生成中…</span>}
+          {!isGenerating && savedAt && <span className="text-success">已保存</span>}
+        </>
+      }
+      onSave={currentChapterId ? saveNow : undefined}
+      saveRole="chapter-save"
+      onClose={closeChapter}
+      closeTitle="关闭（切到其它内容）"
+      footerLeft={
+        <>
+          <span data-role="char-count">{charCount} 字</span>
+          <span className="ml-auto">Ctrl+S 保存</span>
+        </>
+      }>
+      <textarea
+        ref={taRef}
+        data-role="chapter-content"
+        defaultValue={chapterContent}
+        onChange={onChange}
+        onKeyDown={(e) => {
+          if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+            e.preventDefault();
+            saveNow();
+          }
+        }}
+        readOnly={isGenerating}
+        placeholder={'开始创作… 选择左侧章节，或点击右侧「生成正文」让 AI 帮你写\n\n段落之间用空行分隔。'}
+        className={EDITOR_TEXTAREA_CLASS}
+      />
+    </EditorShell>
   );
 }
 

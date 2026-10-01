@@ -2,12 +2,12 @@
 //
 // 它还没有归属位置，所以面包屑显示「未保存文本」；点保存时弹窗让用户选择
 // 落到哪里（分卷下的新章节 / 分卷外章节 / 细纲 / 角色子项 / 世界观条目）。
+// 外壳与正文编辑器、条目编辑器共用 EditorShell，布局保持一致。
 import { useState } from 'react';
-import { Save, X } from 'lucide-react';
 import { useEditorStore, DocKind } from '../../stores/editor.store';
 import { useProjectStore } from '../../stores/project.store';
 import { apiClient } from '../../services/api.service';
-import EditorBreadcrumb from './EditorBreadcrumb';
+import EditorShell, { EDITOR_TEXTAREA_CLASS } from './EditorShell';
 import SaveDraftDialog from './SaveDraftDialog';
 
 export default function DraftEditor() {
@@ -15,13 +15,9 @@ export default function DraftEditor() {
   const currentBook = useProjectStore((s) => s.currentBook);
   const books = useProjectStore((s) => s.books);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [savedHint, setSavedHint] = useState(false);
 
   const content = draftText ?? '';
-
-  /**
-   * 草稿要落到哪本书里 —— 现在由弹窗自己列出所有作品让用户选，
-   * 这里只需要判断「有没有作品可存」。
-   */
 
   /**
    * 打开刚保存出来的章节（走正常正文编辑器，自动保存等逻辑与目录选章一致）。
@@ -45,40 +41,31 @@ export default function DraftEditor() {
     ]);
   };
 
-  return (
-    <div className="h-full flex flex-col">
-      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border-primary bg-bg-secondary text-xs">
-        <EditorBreadcrumb />
-        <span className="ml-auto flex items-center gap-3 shrink-0">
-          <span data-role="draft-count" className="text-text-tertiary">
-            {content.replace(/\s/g, '').length} 字
-          </span>
-          <button data-role="draft-save" onClick={() => setDialogOpen(true)}
-            className="px-2 py-0.5 text-brand-primary hover:bg-bg-hover rounded"
-            title="保存到指定位置">
-            <Save size={12} className="inline" /> 保存
-          </button>
-          <button onClick={clearDraft} className="px-1.5 py-0.5 text-text-tertiary hover:text-text-primary rounded hover:bg-bg-hover"
-            title="关闭（不保存）">
-            <X size={13} />
-          </button>
-        </span>
-      </div>
+  const charCount = content.replace(/\s/g, '').length;
 
-      <div className="flex-1 overflow-hidden">
+  return (
+    <>
+      <EditorShell
+        titleSlot={<span data-role="draft-title-label" className="font-medium text-text-primary">未保存文本</span>}
+        statusSlot={savedHint ? <span className="text-success">已保存</span> : null}
+        onSave={() => setDialogOpen(true)}
+        saveRole="draft-save"
+        onClose={clearDraft}
+        closeTitle="关闭（不保存）"
+        footerLeft={
+          <>
+            <span data-role="draft-count">{charCount} 字</span>
+            <span className="ml-auto">点「保存」选择存放位置</span>
+          </>
+        }>
         <textarea
           data-role="draft-content"
           value={content}
           onChange={(e) => setDraftText(e.target.value)}
           placeholder="在这里写点什么… 保存时再选择放到书里的哪个位置（章节、细纲、角色子项、世界观都行）"
-          className="chapter-editor w-full h-full p-6 text-sm leading-relaxed resize-none focus:outline-none font-sans"
+          className={EDITOR_TEXTAREA_CLASS}
         />
-      </div>
-
-      <div className="px-3 py-1 text-[11px] text-text-tertiary border-t border-border-primary flex items-center gap-3">
-        <span>未保存文本</span>
-        <span className="ml-auto">点「保存」选择存放位置</span>
-      </div>
+      </EditorShell>
 
       {/* 保存位置改由弹窗内自己选：先列作品，再选目录/相关往下钻，故不再传 bookId */}
       {books.length ? (
@@ -88,6 +75,8 @@ export default function DraftEditor() {
           onClose={() => setDialogOpen(false)}
           onSaved={async (info) => {
             setDialogOpen(false);
+            setSavedHint(true);
+            setTimeout(() => setSavedHint(false), 2000);
             clearDraft();
             if (info.volumeId) {
               // 保存成了章节：直接打开该章节（走正常正文编辑器，自动保存等逻辑一致）
@@ -116,6 +105,6 @@ export default function DraftEditor() {
           </div>
         )
       )}
-    </div>
+    </>
   );
 }
