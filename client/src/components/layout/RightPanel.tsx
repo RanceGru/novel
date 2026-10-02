@@ -118,41 +118,48 @@ export default function RightPanel() {
         ))}
       </div>
 
-      {/* 内容区 */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-3">
-        {rightPanelTab === 'instruction' && (
-          <>
-            <label className="text-xs font-medium text-text-secondary">写作指令</label>
-            <textarea
-              className="w-full h-40 p-2 text-sm border border-border-primary rounded bg-bg-primary text-text-primary resize-none focus:outline-none focus:border-brand-primary"
-              placeholder="对 AI 的具体写作指令...&#10;&#10;例如：&#10;- 文风要简洁有力，避免过度描写&#10;- 重点刻画主角的心理活动&#10;- 打斗场景要快速，3段以内结束"
-              value={instruction}
-              onChange={(e) => setInstruction(e.target.value)}
-            />
-          </>
-        )}
+      {/* 内容区：
+          上半部分是页签内容（撑满剩余高度），下半部分是「目标字数」。
+          指令页的文本框因此会一直伸到「目标字数」上方，与它保持 gap-3 的间距；
+          「目标字数」用 shrink-0 固定，任何情况下都不会被挤压变形。 */}
+      <div className="flex-1 min-h-0 flex flex-col p-3 gap-3">
+        <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-y-auto">
+          {rightPanelTab === 'instruction' && (
+            <div className="flex-1 min-h-0 flex flex-col gap-2">
+              <label data-role="instruction-label" className="shrink-0 text-xs font-medium text-text-secondary">写作指令</label>
+              <textarea
+                data-role="instruction-input"
+                className="flex-1 min-h-[80px] w-full p-2 text-sm border border-border-primary rounded bg-bg-primary text-text-primary resize-none focus:outline-none focus:border-brand-primary"
+                placeholder="对 AI 的具体写作指令...&#10;&#10;例如：&#10;- 文风要简洁有力，避免过度描写&#10;- 重点刻画主角的心理活动&#10;- 打斗场景要快速，3段以内结束"
+                value={instruction}
+                onChange={(e) => setInstruction(e.target.value)}
+              />
+            </div>
+          )}
 
-        {rightPanelTab === 'review' && <VersionHistory />}
-        {rightPanelTab === 'memory' && <AgentPanel />}
-        {rightPanelTab === 'settings' && (
-          <div className="text-xs space-y-2">
-            <p className="font-medium text-text-secondary">⚙ 生成参数</p>
-            <div className="space-y-1">
-              <label className="text-text-tertiary">创造力 (temperature)</label>
-              <input type="range" min="0.1" max="1.5" step="0.1" defaultValue="0.8" className="w-full" />
+          {rightPanelTab === 'review' && <VersionHistory />}
+          {rightPanelTab === 'memory' && <AgentPanel />}
+          {rightPanelTab === 'settings' && (
+            <div className="text-xs space-y-2">
+              <p className="font-medium text-text-secondary">⚙ 生成参数</p>
+              <div className="space-y-1">
+                <label className="text-text-tertiary">创造力 (temperature)</label>
+                <input type="range" min="0.1" max="1.5" step="0.1" defaultValue="0.8" className="w-full" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-text-tertiary">最大字数</label>
+                <input type="number" defaultValue={4096} className="w-full p-1 border rounded text-xs" />
+              </div>
             </div>
-            <div className="space-y-1">
-              <label className="text-text-tertiary">最大字数</label>
-              <input type="number" defaultValue={4096} className="w-full p-1 border rounded text-xs" />
-            </div>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* 目标字数 */}
-        <div>
+        <div className="shrink-0" data-role="target-word-count">
           <label className="text-xs font-medium text-text-secondary">目标字数</label>
           <input
             type="number"
+            data-role="target-word-input"
             className="w-full mt-1 p-1.5 text-sm border border-border-primary rounded bg-bg-primary text-text-primary focus:outline-none focus:border-brand-primary"
             value={targetWordCount}
             onChange={(e) => setTargetWordCount(Number(e.target.value))}

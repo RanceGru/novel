@@ -56,6 +56,15 @@ const READ_PANEL = `
     const 主题色 = pcs.backgroundColor, 反白色 = pcs.color;
     probe.remove();
     const panelText = panel.innerText || '';
+    const rect = (el) => {
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { 顶: Math.round(r.top), 底: Math.round(r.bottom), 高: Math.round(r.height), 左: Math.round(r.left), 右: Math.round(r.right) };
+    };
+    const ink = panel.querySelector('[data-role="instruction-input"]');
+    const inkLabel = panel.querySelector('[data-role="instruction-label"]');
+    const twBlock = panel.querySelector('[data-role="target-word-count"]');
+    const twInput = panel.querySelector('[data-role="target-word-input"]');
     return {
       tabs,
       面板文本: panelText,
@@ -63,6 +72,13 @@ const READ_PANEL = `
       含章纲快照: panelText.includes('章节纲（快照）'),
       主题色,
       反白色,
+      指令框: rect(ink),
+      指令标签: rect(inkLabel),
+      首个页签: rect(panel.querySelector('[data-role="right-panel-tab"]')),
+      目标字数块: rect(twBlock),
+      目标字数输入框: rect(twInput),
+      生成正文块: rect(gen),
+      面板块: rect(panel),
       生成正文: gen ? {
         文案: (gen.textContent || '').trim(),
         背景色: cs.backgroundColor,
@@ -126,6 +142,9 @@ async function main() {
   st = await cdp.eval(READ_PANEL);
   check('切到「审查」后选中态跟随',
     st.tabs.find((x) => x.选中)?.键 === 'review', JSON.stringify(st.tabs.filter((x) => x.选中).map((x) => x.键)));
+  check('切到「审查」后「目标字数」仍固定在面板内',
+    !!st.目标字数块 && st.目标字数块.底 <= st.面板块.底 && st.目标字数块.底 > 0,
+    JSON.stringify(st.目标字数块));
 
   await cdp.eval(`(() => { const b=document.querySelector('[data-role="right-panel-tab"][data-tab="instruction"]'); if(b) b.click(); return !!b; })()`);
   await sleep(800);
@@ -139,6 +158,28 @@ async function main() {
   check('按钮为实心主题色', st.生成正文?.背景色 === st.主题色, `${st.生成正文?.背景色} vs ${st.主题色}`);
   check('按钮为反白文字', st.生成正文?.文字色 === st.反白色 && st.反白色 === 'rgb(255, 255, 255)',
     `${st.生成正文?.文字色} vs ${st.反白色}`);
+
+  // ⑤ 指令文本框拉伸到底（到「目标字数」上方），且不挤压「目标字数」
+  console.log('\n【⑤ 指令框拉伸】');
+  console.log('   指令框:', JSON.stringify(st.指令框), '目标字数块:', JSON.stringify(st.目标字数块));
+  console.log('   目标字数输入框:', JSON.stringify(st.目标字数输入框), '生成正文块:', JSON.stringify(st.生成正文块));
+  const GAP = st.目标字数块.顶 - st.指令框.底;          // 指令框底 → 目标字数块顶
+  const 标签间距 = st.指令框.顶 - st.指令标签.底;        // 「写作指令」标签底 → 指令框顶
+  const 标签上留白 = st.指令标签.顶 - st.首个页签.底;   // 页签栏底 → 标签顶（应保持 p-3 = 12px）
+  const 面板内底部距 = st.面板块.底 - st.目标字数块.底;  // 目标字数块底 → 面板底（应只剩生成正文区）
+  console.log(`   指令框↔目标字数间距=${GAP}px；标签↔指令框=${标签间距}px；页签栏↔标签=${标签上留白}px；目标字数块底↔面板底=${面板内底部距}px`);
+  check('指令框已拉伸（明显高于原来的 160px）', st.指令框.高 > 220, `高=${st.指令框.高}`);
+  check('指令框一直伸到「目标字数」上方（保留了 12px 间距）',
+    GAP >= 8 && GAP <= 20, `间距=${GAP}px`);
+  check('「写作指令」标签位置未变（页签栏下方仍留 12px）', 标签上留白 === 12, `留白=${标签上留白}px`);
+  check('指令框紧跟标签下方（间距 8px，起始位置未变）', 标签间距 === 8, `间距=${标签间距}px`);
+  check('「目标字数」输入框未被挤压（高度与原样一致）',
+    st.目标字数输入框.高 >= 26 && st.目标字数输入框.高 <= 44, `高=${st.目标字数输入框.高}`);
+  check('「目标字数」仍在生成正文按钮上方（位置未被顶下去）',
+    st.目标字数块.底 <= st.生成正文块.顶, `${st.目标字数块.底} vs ${st.生成正文块.顶}`);
+  check('指令框与「目标字数」都在面板可视区内',
+    st.指令框.底 <= st.面板块.底 && st.目标字数块.底 <= st.面板块.底,
+    `面板底=${st.面板块.底}`);
 
   console.log(`\n=== 结论: ${pass} 通过 / ${fail} 失败 ===`);
   ws.close();
